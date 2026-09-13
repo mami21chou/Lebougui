@@ -1,0 +1,54 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# ===== Environnements virtuels =====
+venv/
+env/
+.venv/
+ia/venv/
+backend/.venv/
+
+# ===== Django =====
+*.log
+db.sqlite3
+db.sqlite3-journal
+/staticfiles/
+/media/
+
+# Fichiers uploadés par les utilisateurs (tests, prod)
+backend/publications/audio/
+backend/publications/media/
+backend/publications/video/
+
+# ===== Variables d'environnement =====
+.env
+.env.*
+
+# ===== VS Code =====
+.vscode/
+*.code-workspace
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== Node / Frontend =====
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.next/
+
+# ===== Modèles IA lourds =====
+ia/models/
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
