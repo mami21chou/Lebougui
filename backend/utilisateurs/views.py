@@ -4,7 +4,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import Utilisateur
-from .serializers import ConnexionSerializer, InscriptionSerializer, UtilisateurSerializer
+from .serializers import ConnexionSerializer, InscriptionSerializer, UtilisateurSerializer, PremiumSouscriptionSerializer
+from rest_framework import status, permissions
 
 class InscriptionView(APIView):
     """Endpoint pour l'inscription des Pêcheurs, Livreurs et Acheteurs."""
@@ -46,3 +47,19 @@ class ProfilMeView(APIView):
     def get(self, request):
         serializer = UtilisateurSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)    
+
+
+
+class SouscrirePremiumView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = PremiumSouscriptionSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        premium = serializer.save()
+        return Response(
+            PremiumSouscriptionSerializer(premium).data,
+            status=status.HTTP_201_CREATED
+        )    

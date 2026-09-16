@@ -50,7 +50,7 @@ def analyser_media(audio_file, media_file=None):
     # `if "media" in request.files` pour savoir si une photo a été fournie.
 
     try:
-        reponse = requests.post(url, files=fichiers, timeout=15)
+        reponse = requests.post(url, files=fichiers)
         reponse.raise_for_status()
     except requests.RequestException as erreur:
         raise ErreurAnalyseIA(f"Le service IA est injoignable : {erreur}")

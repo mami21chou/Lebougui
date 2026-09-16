@@ -2,40 +2,15 @@ from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer, Serializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from .models import Utilisateur, ProfilPecheur, ProfilLivreur, Vehicule
+from .models import Utilisateur, ProfilPecheur, ProfilLivreur, Vehicule, Premium
+from rest_framework import serializers
+
 
 class UtilisateurSerializer(ModelSerializer):
     class Meta:
         model=Utilisateur
         fields=['id','telephone','email', 'nom', 'prenom', 'adresse', 'role','date_inscription']
 
-# class InscriptionSerializer(ModelSerializer):
-#     code_pin=serializers.CharField(write_only=True,min_length=4, max_length=8)
-
-#     class Meta:
-#         model= Utilisateur
-#         fields=['telephone','code_pin','nom','prenom','adresse','role']  
-
-#     def validate_role(self,value):
-#         if value == Utilisateur.Role.ADMIN:
-#             raise serializers.ValidationError("L'insription directe en tant que admin n'est pas autorisee")
-#         return value
-
-#     def create(self, validated_data):
-#         code_pin= validated_data.pop('code_pin')
-#         role =validated_data.get('role')
-
-#         utilisateur=Utilisateur.objects.create_user(   #Création de l'utilisateur
-#             code_pin=code_pin,
-#             **validated_data
-#         )    
-
-#         if role==Utilisateur.Role.LIVREUR:
-#             ProfilLivreur.objects.create(utilisateur=utilisateur)
-
-#         elif role ==Utilisateur.Role.PECHEUR:
-#             ProfilPecheur.objects.create(utilisateur=utilisateur)
-#         return utilisateur
 
 
 class InscriptionSerializer(ModelSerializer):
@@ -126,3 +101,23 @@ class ConnexionSerializer(Serializer):
                 'access':str(refresh.access_token)
             }
         }
+
+
+
+
+
+class PremiumSouscriptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Premium
+        fields = ["id", "fonction", "statut", "date_obtention", "date_expiration"]
+        read_only_fields = ["id", "statut", "date_obtention", "date_expiration"]
+
+    def create(self, validated_data):
+        utilisateur = self.context["request"].user
+        # Attribue automatiquement l'utilisateur connecté
+        premium, _ = Premium.objects.get_or_create(
+            utilisateur=utilisateur,
+            fonction=validated_data["fonction"],
+            defaults={"statut": Premium.Statut.EN_ATTENTE}
+        )
+        return premium    

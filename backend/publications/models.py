@@ -7,7 +7,7 @@ class Publication(models.Model):
     class StatutModeration(models.TextChoices):
         VISIBLE = "visible", "Visible"
         EN_ATTENTE = "en_attente", "En attente de validation admin"
-        REJETE = "rejete", "Rejeté par l'admin"
+        REJETE = "rejete", "Rejeté par l'admin" # si le contenu n'est pas adaquat
 
     SEUIL_CONFIANCE_IA = 0.70
 
