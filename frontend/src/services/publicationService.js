@@ -15,7 +15,7 @@ export const PublicationService = {
 
   // 3. Récupération des publications spécifiques du pêcheur connecté (méthode demandée par le Dashboard)
   async getInformationsPeche() {
-    const response = await API.get('/publications/produits/'); 
+    const response = await API.get('/publications/informations/');
     return response.data;
   },
 
@@ -73,5 +73,19 @@ export const PublicationService = {
     });
 
     return response.data;
-  }
+  },
+  
+  async publier(audioBlob, mediaFile) {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'vocal_wolof.webm');
+    if (mediaFile) {
+      formData.append('media', mediaFile, mediaFile.name || 'photo.jpg');
+    }
+
+    const response = await API.post('/publications/publier/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
 };
+

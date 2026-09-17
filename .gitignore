@@ -52,3 +52,8 @@ ia/models/
 *.pt
 *.pth
 *.ckpt
+
+styles/
+maquette/
+*.json
+media/

@@ -31,9 +31,10 @@ export class AuthService {
     return response.data;
   }
 
-  // Connexion Admin
+  // Connexion Admin (utilise la même endpoint que les utilisateurs)
+  // Le backend détecte automatiquement que c'est un admin via l'email
   static async connexionAdmin(email, password) {
-    const response = await API.post('/auth/admin/connexion/', {
+    const response = await API.post('/auth/connexion/', {
       identifiant: email,
       mot_de_passe: password,
     });

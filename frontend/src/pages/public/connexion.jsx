@@ -18,32 +18,46 @@ const handleSubmit = async (e) => {
   try {
     const data = await AuthService.connexionUtilisateur(telephone, codePin);
 
-    // Extraction depuis la structure exacte de Django
     const accessToken = data?.tokens?.access;
     const refreshToken = data?.tokens?.refresh;
 
-    if (accessToken) {
-      // Enregistrement sous les deux clés pour éviter tout problème de nommage
-      localStorage.setItem('access_token', accessToken);
-      localStorage.setItem('token', accessToken);
-      
-      if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
-      if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
-
-      // Redirection après succès
-      const params = new URLSearchParams(window.location.search);
-      const target = params.get('redirect') || '/pecheur/accueil';
-      window.location.href = target;
-    } else {
-      setErrorMsg('Jeton d\'accès non reçu.');
+    if (!accessToken) {
+      setErrorMsg("Jeton d'accès non reçu.");
+      setLoading(false);
+      return;
     }
+
+    localStorage.setItem('access_token', accessToken);
+    localStorage.setItem('token', accessToken);
+    if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
+    if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+
+    // 1) Redirection explicite si ?redirect= dans l'URL
+    const params = new URLSearchParams(window.location.search);
+    let target = params.get('redirect');
+
+    // 2) Sinon, redirection selon le rôle de l'utilisateur
+    if (!target) {
+      const role = data?.user?.role;
+      if (role === 'pecheur') target = '/pecheur/accueil';
+      else if (role === 'acheteur') target = '/acheteur/accueil';
+      else if (role === 'livreur') target = '/livreur/accueil';
+      else if (role === 'admin') target = '/admin/accueil';
+      else target = '/';
+    }
+
+    window.location.href = target;
   } catch (err) {
-    setErrorMsg('Identifiants incorrects.');
+    console.error('Erreur de connexion:', err);
+    const msg =
+      err.response?.data?.detail ||
+      err.response?.data?.erreur ||
+      'Identifiants incorrects.';
+    setErrorMsg(msg);
   } finally {
     setLoading(false);
   }
 };
-
   return (
     <AuthLayout badgeText="Espace Utilisateur" title="Connexion">
       <div className="w-full bg-slate-50/95 backdrop-blur-md rounded-3xl p-6 shadow-2xl border border-white/30">

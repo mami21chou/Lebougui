@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bell, Camera, Mic, Video, Wind, Droplets, Compass, MapPin, Store, Package, ClipboardList, TrendingUp } from 'lucide-react';
 import AudioRecorderModal from '../../components/AudioRecorderModal';
 import { PublicationService } from '../../services/publicationService';
-
+import UserMenu from '../../components/UserMenu';
+import { useAuth } from '../../context/AuthContext';
 export default function PecheurDashboard() {
+  const navigate = useNavigate();
+  const { utilisateur } = useAuth();
   const [showRecorder, setShowRecorder] = useState(false);
   const [produits, setProduits] = useState([]);
   const [informations, setInformations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pendingAudio, setPendingAudio] = useState(null);
 
-  // Chargement dynamique au montage
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
@@ -28,56 +32,69 @@ export default function PecheurDashboard() {
     loadDashboardData();
   }, []);
 
-  // Garde de connexion pour les actions protégées
   const requireAuthAction = (actionCallback) => {
     const token = localStorage.getItem('access_token');
     if (!token) {
-      window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+      window.location.href = `/connexion?redirect=${encodeURIComponent(window.location.pathname)}`;
       return;
     }
     actionCallback();
   };
 
-  const handleOpenRecorder = () => {
-    requireAuthAction(() => setShowRecorder(true));
+  const handleOpenRecorder = () => requireAuthAction(() => setShowRecorder(true));
+
+  // Audio seul → direction page nouvelle
+  const handleAudioCaptured = (blob) => {
+    setShowRecorder(false);
+    navigate('/publication/nouvelle', { state: { audioBlob: blob, photoFile: null } });
   };
 
-  const handleAudioCaptured = (blob, url) => {
+  // Audio + photo : on stocke le blob audio, puis on ouvre l'input photo
+  const handleFinishAndAddPhoto = (blob) => {
     setShowRecorder(false);
-    window.location.href = '/publication/nouvelle';
+    setPendingAudio(blob);
+    document.getElementById('dashboard-photo-input')?.click();
   };
 
-  const handleFinishAndAddPhoto = (blob, url) => {
-    setShowRecorder(false);
-    const photoInput = document.getElementById('dashboard-photo-input');
-    if (photoInput) photoInput.click();
+  const handlePhotoSelected = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !pendingAudio) return;
+    navigate('/publication/nouvelle', {
+      state: { audioBlob: pendingAudio, photoFile: file },
+    });
+    e.target.value = ''; // reset input
   };
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-slate-800 font-sans pb-24 max-w-md mx-auto shadow-2xl relative">
-      <header className="p-5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-sm">
-            <img 
-              src="https://atlanticabene.com/wp-content/uploads/2024/04/sejour-peche-sportive-au-senegal.jpg" 
-              alt="Assane" 
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div>
-            <span className="text-[10px] font-bold tracking-widest text-teal-600 uppercase">BONSOIR</span>
-            <h1 className="text-lg font-black text-slate-900 leading-none">ASSANE</h1>
-          </div>
-        </div>
+     <header className="p-5 flex items-center justify-between">
+  <div>
+    <span className="text-[10px] font-bold tracking-widest text-teal-600 uppercase">
+      BONSOIR
+    </span>
+    <h1 className="text-lg font-black text-slate-900 leading-none">
+      {(utilisateur?.prenom || 'Pêcheur').toUpperCase()}
+    </h1>
+  </div>
 
-        <button 
-          onClick={() => requireAuthAction(() => alert("Notifications"))}
-          className="relative p-2.5 bg-white rounded-full border border-slate-200/80 shadow-sm text-slate-700"
-        >
-          <Bell size={18} />
-          <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-orange-500"></span>
-        </button>
-      </header>
+  <div className="flex items-center gap-2">
+    <button
+      onClick={() => requireAuthAction(() => alert("Notifications"))}
+      className="relative p-2.5 bg-white rounded-full border border-slate-200/80 shadow-sm text-slate-700"
+    >
+      <Bell size={18} />
+      <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-orange-500"></span>
+    </button>
+
+    <UserMenu
+      photo={utilisateur?.photo}
+      prenom={utilisateur?.prenom}
+      nom={utilisateur?.nom}
+      role="Pêcheur"
+      showName={false}
+    />
+  </div>
+</header>
 
       <main className="px-5 space-y-6">
         {/* Widget Météo Marine */}
@@ -117,17 +134,19 @@ export default function PecheurDashboard() {
         {/* Bloc Publication Vocale */}
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/60 text-center space-y-4">
           <h3 className="text-base font-bold text-slate-900">Publier</h3>
-          
+
           <div className="flex items-center justify-center gap-6">
-            <input 
-              id="dashboard-photo-input" 
-              type="file" 
-              accept="image/*" 
-              className="hidden" 
-              onChange={() => requireAuthAction(() => window.location.href = '/publication/nouvelle')} 
+            <input
+              id="dashboard-photo-input"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoSelected}
             />
-            <button 
-              onClick={() => requireAuthAction(() => document.getElementById('dashboard-photo-input').click())}
+
+            {/* Caméra : photo SEULE → on bloque car le back exige l'audio, on redirige plutôt vers l'enregistreur */}
+            <button
+              onClick={() => requireAuthAction(() => setShowRecorder(true))}
               className="p-3 bg-slate-100 rounded-full text-slate-600 hover:bg-slate-200 transition-colors"
             >
               <Camera size={20} />
@@ -141,8 +160,8 @@ export default function PecheurDashboard() {
               </div>
             </button>
 
-            <button 
-              onClick={() => requireAuthAction(() => window.location.href = '/publication/nouvelle')}
+            <button
+              onClick={() => requireAuthAction(() => setShowRecorder(true))}
               className="p-3 bg-slate-100 rounded-full text-slate-600 hover:bg-slate-200 transition-colors"
             >
               <Video size={20} />
@@ -152,7 +171,7 @@ export default function PecheurDashboard() {
           <p className="text-xs font-bold text-slate-700 tracking-wide">Waxal ci wolof</p>
         </div>
 
-        {/* Informations de Pêche Dynamiques */}
+        {/* Informations */}
         <div className="space-y-3">
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">INFORMATIONS DE PÊCHE</h3>
           {loading ? (
@@ -164,8 +183,7 @@ export default function PecheurDashboard() {
               <div key={info.id} className="bg-white rounded-2xl p-4 shadow-sm border-l-teal-500 border-y border-r border-slate-200/60 space-y-1">
                 <div className="flex justify-between items-center">
                   <h4 className="text-sm font-bold text-slate-900">{info.adresse || 'Zone de Pêche'}</h4>
-                  <p className="text-sm font-bold text-slate-900">{info.description|| 'cliquez pour voir'}</p>
-                  <span className="text-[10px] text-slate-400">{info.description|| "Aujourd'hui"}</span>
+                  <span className="text-[10px] text-slate-400">{info.description || "Aujourd'hui"}</span>
                 </div>
                 <p className="text-xs text-slate-600 leading-relaxed">{info.description || info.texte_traduit}</p>
               </div>
@@ -173,7 +191,7 @@ export default function PecheurDashboard() {
           )}
         </div>
 
-        {/* Le Marché du Jour Dynamique */}
+        {/* Marché */}
         <div className="space-y-3">
           <div className="flex justify-between items-center">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">LE MARCHÉ DU JOUR</h3>
@@ -198,7 +216,7 @@ export default function PecheurDashboard() {
                     <div className="pt-2 flex items-baseline justify-between">
                       <span className="text-xs font-black text-orange-500">{item.prix} FCFA <span className="text-[9px] text-slate-400 font-normal">/kg</span></span>
                     </div>
-                    <p className="text-[9px] text-slate-400 pt-1">{item.vendeur_nom || 'Pêcheur'}</p>
+                    <p className="text-[9px] text-slate-400 pt-1">{item.pecheur_prenom || item.pecheur_nom || 'Pêcheur'}</p>
                   </div>
                 </div>
               ))}
@@ -212,22 +230,22 @@ export default function PecheurDashboard() {
           <Store size={18} />
           <span className="text-[9px]">Marché</span>
         </button>
-        <button onClick={() => requireAuthAction(() => {})} className="flex flex-col items-center gap-1 hover:text-slate-700">
+        <button onClick={() => requireAuthAction(() => navigate('/pecheur/publications'))} className="flex flex-col items-center gap-1 hover:text-slate-700">
           <Package size={18} />
           <span className="text-[9px]">Publications</span>
         </button>
-        <button onClick={() => requireAuthAction(() => {})} className="flex flex-col items-center gap-1 hover:text-slate-700">
+        <button onClick={() => requireAuthAction(() => navigate('/pecheur/commandes'))} className="flex flex-col items-center gap-1 hover:text-slate-700">
           <ClipboardList size={18} />
           <span className="text-[9px]">Commandes</span>
         </button>
-        <button onClick={() => requireAuthAction(() => {})} className="flex flex-col items-center gap-1 hover:text-slate-700">
+        <button onClick={() => requireAuthAction(() => navigate('/pecheur/ventes'))} className="flex flex-col items-center gap-1 hover:text-slate-700">
           <TrendingUp size={18} />
           <span className="text-[9px]">Ventes</span>
         </button>
       </nav>
 
       {showRecorder && (
-        <AudioRecorderModal 
+        <AudioRecorderModal
           onCancel={() => setShowRecorder(false)}
           onAudioCaptured={handleAudioCaptured}
           onFinishAndAddPhoto={handleFinishAndAddPhoto}
