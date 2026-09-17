@@ -1,8 +1,3 @@
-"""
-App : commandes
-Fichier : views.py
-"""
-
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -11,10 +6,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 
-from utilisateurs.models import Utilisateur
+from utilisateurs.models import Utilisateur, Premium
 from .models import Commande, Livraison, Note, Alerte
 from .serializers import (
     CommandeSerializer,
+    CommandeCreateSerializer,
     LivraisonSerializer,
     RegrouperCommandesLivraisonSerializer,
     NoteSerializer,
@@ -23,7 +19,9 @@ from .serializers import (
 from .services import calculer_distance_km, calculer_frais_livraison, envoyer_webhook_n8n
 
 
-# --- PERMISSIONS SUR-MESURE ---
+# =========================================================
+# PERMISSIONS
+# =========================================================
 
 class EstAcheteur(permissions.BasePermission):
     def has_permission(self, request, view):
@@ -53,30 +51,38 @@ class EstLivreur(permissions.BasePermission):
 
 
 class EstAcheteurPremium(permissions.BasePermission):
-    """
-    Permission stricte pour les alertes :
-    - Si l'utilisateur n'est pas Premium, l'accès est bloqué avec un message d'incitation.
-    """
     def has_permission(self, request, view):
-        if not (request.user and request.user.is_authenticated and request.user.role == Utilisateur.Role.ACHETEUR):
+        if not (request.user and request.user.is_authenticated
+                and request.user.role == Utilisateur.Role.ACHETEUR):
             return False
 
-        # Vérification du statut Premium
-        if not getattr(request.user, "est_premium", False):
+        est_premium_actif = request.user.status_premium.filter(
+            fonction=Premium.Fonction.ABONNEMENT_ACHETEUR,
+            statut=Premium.Statut.ACTIF,
+        ).exists()
+
+        if not est_premium_actif:
             raise PermissionDenied({
                 "code": "A_ABONNEMENT_PREMIUM_REQUIS",
                 "detail": "La création d'alertes instantanées est une fonctionnalité exclusive Premium.",
-                "incitation": "Abonnez-vous à la formule Premium pour être notifié par WhatsApp dès qu'un pêcheur publie du poisson (ex: Thiof) !"
+                "incitation": "Abonnez-vous à la formule Premium pour être notifié par WhatsApp dès qu'un pêcheur publie du poisson !"
             })
 
-        return True
+        return True    
 
 
-# --- 1. VIEWSET COMMANDE ---
+# =========================================================
+# 1. VIEWSET COMMANDE
+# =========================================================
 
 class CommandeViewSet(viewsets.ModelViewSet):
-    serializer_class = CommandeSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        # Utilise CommandeCreateSerializer à la création et CommandeSerializer en lecture
+        if self.action == "create":
+            return CommandeCreateSerializer
+        return CommandeSerializer
 
     def get_queryset(self):
         user = self.request.user
@@ -91,16 +97,11 @@ class CommandeViewSet(viewsets.ModelViewSet):
         return Commande.objects.none()
 
     def perform_create(self, serializer):
-        commande = serializer.save(acheteur=self.request.user)
-        # Webhook n8n : Notification au pêcheur pour la nouvelle commande reçue
+        commande = serializer.save()
         envoyer_webhook_n8n("commande.creee", CommandeSerializer(commande).data)
 
     @action(detail=True, methods=["post"], permission_classes=[EstPecheur], url_path="confirmer")
     def confirmer_commande(self, request, pk=None):
-        """
-        Le pêcheur confirme la commande. Le système calcule la distance
-        et fixe les frais de livraison avant de notifier n8n.
-        """
         commande = self.get_object()
 
         if commande.statut != Commande.Statut.EN_ATTENTE_PECHEUR:
@@ -109,12 +110,14 @@ class CommandeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Calcul automatique de la distance si les coordonnées GPS sont disponibles
-        if hasattr(commande.pecheur, "latitude") and hasattr(commande.acheteur, "latitude"):
-            if commande.pecheur.latitude and commande.acheteur.latitude:
+        # Calcul de la distance basé sur les coordonnées GPS du produit commandé
+        premiere_ligne = commande.lignes.first()
+        if premiere_ligne and premiere_ligne.produit:
+            prod = premiere_ligne.produit
+            if prod.latitude and commande.latitude_livraison:
                 dist = calculer_distance_km(
-                    float(commande.pecheur.latitude), float(commande.pecheur.longitude),
-                    float(commande.acheteur.latitude), float(commande.acheteur.longitude)
+                    float(prod.latitude), float(prod.longitude),
+                    float(commande.latitude_livraison), float(commande.longitude_livraison)
                 )
                 commande.distance_km = round(dist, 2)
                 commande.frais_livraison = calculer_frais_livraison(dist)
@@ -123,7 +126,6 @@ class CommandeViewSet(viewsets.ModelViewSet):
         commande.save()
 
         data = CommandeSerializer(commande).data
-        # Webhook n8n : Envoi de la demande de paiement à l'acheteur
         envoyer_webhook_n8n("commande.confirmee", data)
 
         return Response(data, status=status.HTTP_200_OK)
@@ -161,7 +163,9 @@ class CommandeViewSet(viewsets.ModelViewSet):
         return Response(CommandeSerializer(commande).data, status=status.HTTP_200_OK)
 
 
-# --- 2. VIEWSET LIVRAISON ---
+# =========================================================
+# 2. VIEWSET LIVRAISON
+# =========================================================
 
 class LivraisonViewSet(viewsets.ModelViewSet):
     serializer_class = LivraisonSerializer
@@ -183,7 +187,7 @@ class LivraisonViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         commande_ids = serializer.validated_data["commande_ids"]
-        commandes = Commande.objects.filter(id__in=value)
+        commandes = Commande.objects.filter(id__in=commande_ids)
 
         with transaction.atomic():
             livraison = Livraison.objects.create(
@@ -194,7 +198,6 @@ class LivraisonViewSet(viewsets.ModelViewSet):
             commandes.update(statut=Commande.Statut.EN_LIVRAISON)
 
         data = LivraisonSerializer(livraison).data
-        # Webhook n8n : Notification aux acheteurs que le livreur a démarré la livraison
         envoyer_webhook_n8n("livraison.acceptee", data)
 
         return Response(data, status=status.HTTP_201_CREATED)
@@ -212,7 +215,9 @@ class LivraisonViewSet(viewsets.ModelViewSet):
         return Response(LivraisonSerializer(livraison).data, status=status.HTTP_200_OK)
 
 
-# --- 3. VIEWSET NOTE ---
+# =========================================================
+# 3. VIEWSET NOTE
+# =========================================================
 
 class NoteViewSet(viewsets.ModelViewSet):
     serializer_class = NoteSerializer
@@ -226,14 +231,15 @@ class NoteViewSet(viewsets.ModelViewSet):
         serializer.save(auteur=self.request.user)
 
 
-# --- 4. VIEWSET ALERTE (EXCLUSIF PREMIUM) ---
+# =========================================================
+# 4. VIEWSET ALERTE (EXCLUSIF PREMIUM)
+# =========================================================
 
 class AlerteViewSet(viewsets.ModelViewSet):
     serializer_class = AlerteSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [EstAcheteurPremium]
 
     def get_queryset(self):
-        # Un utilisateur ne voit que ses propres alertes
         return Alerte.objects.filter(acheteur=self.request.user)
 
     def create(self, request, *args, **kwargs):

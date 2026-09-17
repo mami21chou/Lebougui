@@ -170,7 +170,8 @@ AUTH_USER_MODEL = 'utilisateurs.Utilisateur'
 
 IA_SERVICE_URL = "http://127.0.0.1:8001"
 # settings.py
-
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 # Autoriser uniquement votre serveur React Vite
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",

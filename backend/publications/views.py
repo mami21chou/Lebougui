@@ -145,3 +145,131 @@ class ListeInformationsView(ListAPIView):
         return Information.objects.filter(
             statut_moderation=Information.StatutModeration.VISIBLE
         ).order_by("-date_publication")
+
+class PublierView(APIView):
+    """
+    ÉTAPE UNIQUE côté pêcheur : reçoit audio + média, appelle l'IA,
+    enregistre DIRECTEMENT en base la publication (Produit ou Information),
+    et renvoie l'objet créé. Le pêcheur n'a rien à saisir :
+    tout (nom, prix, quantité, adresse, description) vient de l'IA.
+    Le statut de modération est décidé automatiquement par
+    Publication.regle_moderation (visible si score >= 0.70, sinon en_attente).
+    """
+    permission_classes = [EstPecheur]
+
+    def post(self, request):
+        audio = request.FILES.get("audio")
+        media = request.FILES.get("media")  # peut être None
+
+        if not audio:
+            return Response(
+                {"erreur": "L'audio est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ---- 1. Analyse IA ----
+        try:
+            analyse = analyser_media(audio, media)
+        except ErreurAnalyseIA as erreur:
+            return Response(
+                {"erreur": str(erreur)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        type_pub = analyse.get("type")
+        suggestion = analyse.get("suggestion", {}) or {}
+        score = analyse.get("score_confiance", 0.0)
+
+        # ---- 2. Construction du payload pour le serializer ----
+        base = {
+            "audio": audio,
+            "adresse": suggestion.get("adresse") or "Non précisé",
+            "latitude": suggestion.get("latitude"),
+            "longitude": suggestion.get("longitude"),
+            "texte_transcrit": analyse.get("texte_transcrit", ""),
+            "texte_traduit": analyse.get("texte_traduit", ""),
+            "score_confiance_ia": score,
+        }
+
+        # ---- 3. Enregistrement ----
+        if type_pub == "produit":
+            if not media:
+                # Sécurité : pas de photo => on retombe sur Information
+                type_pub = "information"
+
+        if type_pub == "produit":
+            serializer = ProduitCreateSerializer(
+                data={
+                    **base,
+                    "media": media,
+                    "nom": suggestion.get("nom") or "Produit non identifié",
+                    "categorie": suggestion.get("categorie") or "poisson",
+                    "prix": suggestion.get("prix") or 0,
+                    "quantite": suggestion.get("quantite") or 0,
+                },
+                context={"request": request},
+            )
+        else:
+            serializer = InformationCreateSerializer(
+                data={
+                    **base,
+                    "description": suggestion.get("description")
+                        or analyse.get("texte_traduit", ""),
+                },
+                context={"request": request},
+            )
+
+        serializer.is_valid(raise_exception=True)
+        publication = serializer.save()
+
+        # ---- 4. Notification Premium (uniquement pour Produit) ----
+        if type_pub == "produit":
+            try:
+                alertes_matching = Alerte.objects.filter(
+                    nom_poisson__iexact=publication.nom,
+                    statut=Alerte.Statut.ACTIVE,
+                    acheteur__status_premium__fonction=Premium.Fonction.ABONNEMENT_ACHETEUR,
+                    acheteur__status_premium__statut=Premium.Statut.ACTIF,
+                ).select_related("acheteur").distinct()
+
+                destinataires = [
+                    {
+                        "acheteur_id": a.acheteur.id,
+                        "nom": f"{a.acheteur.prenom} {a.acheteur.nom}".strip()
+                            or a.acheteur.email,
+                        "telephone": getattr(a.acheteur, "telephone", ""),
+                    }
+                    for a in alertes_matching
+                ]
+
+                if destinataires:
+                    envoyer_webhook_n8n(
+                        "produit.publie_alerte_premium",
+                        {
+                            "produit_id": publication.id,
+                            "nom_poisson": publication.nom,
+                            "prix_unitaire": float(publication.prix),
+                            "quantite_kg": float(publication.quantite),
+                            "pecheur_nom": f"{publication.pecheur.prenom} {publication.pecheur.nom}".strip()
+                                or publication.pecheur.telephone,
+                            "destinataires": destinataires,
+                        },
+                    )
+            except Exception as e:
+                print(">>> webhook n8n non envoyé :", e)
+
+        # ---- 5. Réponse ----
+        if type_pub == "produit":
+            data = ProduitSerializer(publication).data
+        else:
+            data = InformationSerializer(publication).data
+
+        return Response(
+            {
+                **data,
+                "type": type_pub,
+                "en_attente_admin": publication.statut_moderation
+                    == publication.StatutModeration.EN_ATTENTE,
+            },
+            status=status.HTTP_201_CREATED,
+        )    

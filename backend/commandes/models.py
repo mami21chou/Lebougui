@@ -5,7 +5,7 @@ Modèles : Commande, ProduitCommande, Livraison, Note, Alerte
 
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
-from utilisateurs.models import Utilisateur, ProfilLivreur
+from utilisateurs.models import Utilisateur, ProfilLivreur, Premium
 from publications.models import Produit
 
 
@@ -33,7 +33,14 @@ class Commande(models.Model):
     numero = models.CharField(max_length=20, unique=True)
     date_commande = models.DateTimeField(auto_now_add=True)
     date_limite_confirmation = models.DateTimeField(null=True, blank=True)
-    
+
+    # Point de livraison choisi par l'acheteur. Le point de RÉCUPÉRATION,
+    # lui, n'est pas dupliqué ici : il vient directement de la Publication
+    # du produit commandé (produit.adresse / latitude / longitude).
+    adresse_livraison = models.CharField(max_length=100, blank=True)
+    latitude_livraison = models.FloatField(null=True, blank=True)
+    longitude_livraison = models.FloatField(null=True, blank=True)
+
     distance_km = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     frais_livraison = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
@@ -64,6 +71,15 @@ class ProduitCommande(models.Model):
 
 
 class Livraison(models.Model):
+    """
+    Une Livraison peut regrouper PLUSIEURS Commande (d'un même pêcheur pour
+    plusieurs clients de la même zone, ou de pêcheurs différents débarquant
+    au même endroit pour un même client / une même zone). Le livreur est
+    payé selon la distance totale du trajet, pas selon le nombre de
+    commandes regroupées — d'où un tarif_livraison unique sur la Livraison,
+    pas un prix par Commande.
+    """
+
     class StatutLivraison(models.TextChoices):
         EN_ATTENTE = "en_attente", "En attente d'un livreur"
         ACCEPTEE = "acceptee", "Acceptée par le livreur"
@@ -78,7 +94,7 @@ class Livraison(models.Model):
         related_name="livraisons"
     )
     commandes = models.ManyToManyField(Commande, related_name="livraisons")
-    
+
     statut = models.CharField(
         max_length=30,
         choices=StatutLivraison.choices,
@@ -113,11 +129,11 @@ class Note(models.Model):
     def __str__(self):
         return f"Note {self.etoile}/5 de {self.auteur} à {self.cible}"
 
-    
+
 class Alerte(models.Model):
     """
-    Alerte réservée aux acheteurs Premium :
-    Notifie l'acheteur sur WhatsApp via n8n dès qu'un produit correspondant (ex: Thiof) est publié.
+    Alerte réservée aux acheteurs Premium : notifie l'acheteur (WhatsApp
+    via n8n) dès qu'un produit correspondant (ex: Thiof) est publié.
     """
     class Statut(models.TextChoices):
         ACTIVE = "active", "Active"
@@ -129,7 +145,7 @@ class Alerte(models.Model):
         related_name="alertes",
     )
     nom_poisson = models.CharField(
-        max_length=100, 
+        max_length=100,
         help_text="Nom du produit surveillé (ex: Thiof, Capitaine, Crevettes)"
     )
     zone = models.CharField(max_length=100, blank=True)
@@ -138,4 +154,8 @@ class Alerte(models.Model):
     )
 
     def __str__(self):
-        return f"Alerte '{self.nom_poisson}' - {self.acheteur.nom} ({'Premium' if getattr(self.acheteur, 'est_premium', False) else 'Gratuit'})"
+        est_premium = self.acheteur.statuts_premium.filter(
+            fonction=Premium.Fonction.ABONNEMENT_ACHETEUR,
+            statut=Premium.Statut.ACTIF,
+        ).exists()
+        return f"Alerte '{self.nom_poisson}' - {self.acheteur.nom} ({'Premium' if est_premium else 'Gratuit'})"
