@@ -1,13 +1,9 @@
-"""
-App : commandes
-Fichier : urls.py
-"""
-
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import CommandeViewSet, LivraisonViewSet, NoteViewSet, AlerteViewSet
+from .views import (
+    CommandeViewSet, LivraisonViewSet, NoteViewSet, AlerteViewSet,
+)
 
-# Configuration du routeur Django REST Framework
 router = DefaultRouter()
 router.register(r'commandes', CommandeViewSet, basename='commande')
 router.register(r'livraisons', LivraisonViewSet, basename='livraison')

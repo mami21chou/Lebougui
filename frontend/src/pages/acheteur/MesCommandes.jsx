@@ -1,20 +1,113 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, Clock, CheckCircle, XCircle, Truck, MapPin, Calendar, ArrowLeft, Eye, ShoppingCart, AlertCircle } from 'lucide-react';
+import {
+  Package, Truck, CheckCircle, XCircle, Clock, MapPin, Phone,
+  Search, Store, Bell, Star,
+} from 'lucide-react';
 import { useCommandes } from '../../context/CommandeContext';
 import { useAuth } from '../../context/AuthContext';
-import Button from '../../components/Button';
-import Card from '../../components/Card';
-import Badge from '../../components/Badge';
+import UserMenu from '../../components/UserMenu';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
+const formatPrice = (p) =>
+  `${new Intl.NumberFormat('fr-FR').format(Number(p) || 0)} FCFA`;
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  const hh = date.getHours().toString().padStart(2, '0');
+  const mm = date.getMinutes().toString().padStart(2, '0');
+  if (sameDay) return `Aujourd'hui, ${hh}:${mm}`;
+  return date.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+// ============================================
+// Statuts par onglet
+// ============================================
+const EN_COURS_STATUTS = [
+  'en_attente_pecheur',
+  'en_attente_paiement',
+  'payee',
+  'en_recherche_livreur',
+  'en_livraison',
+];
+// Livrées : uniquement les livrées
+const LIVREE_STATUTS = ['livree'];
+// Historique : tout ce qui est terminé (livrées + annulées + refusées)
+const HISTORIQUE_STATUTS = ['livree', 'annulee', 'refusee'];
+
+// ============================================
+// Timeline
+// ============================================
+const ETAPES = [
+  { key: 'confirmee', label: 'Commande confirmée', icone: CheckCircle },
+  { key: 'en_livraison', label: 'En cours de livraison', icone: Truck },
+  { key: 'reception', label: 'Réception & validation du lot', icone: Package },
+];
+
+const getEtapeActuelle = (statut) => {
+  switch (statut) {
+    case 'en_attente_pecheur':
+    case 'en_attente_paiement':
+    case 'payee':
+      return 0;
+    case 'en_recherche_livreur':
+    case 'en_livraison':
+      return 1;
+    case 'livree':
+      return 2;
+    default:
+      return 0;
+  }
+};
+
+const getStatutLabel = (statut) => {
+  switch (statut) {
+    case 'en_attente_pecheur': return 'En attente du pêcheur';
+    case 'en_attente_paiement': return 'À payer';
+    case 'payee': return 'Payée';
+    case 'en_recherche_livreur': return 'En recherche de livreur';
+    case 'en_livraison': return 'En cours de livraison';
+    case 'livree': return 'Livrée';
+    case 'annulee': return 'Annulée';
+    case 'refusee': return 'Refusée';
+    default: return statut;
+  }
+};
+
+const getStatutCouleur = (statut) => {
+  switch (statut) {
+    case 'en_attente_pecheur': return { bg: 'bg-amber-50', text: 'text-amber-700' };
+    case 'en_attente_paiement': return { bg: 'bg-orange-50', text: 'text-orange-700' };
+    case 'payee': return { bg: 'bg-emerald-50', text: 'text-emerald-700' };
+    case 'en_recherche_livreur': return { bg: 'bg-blue-50', text: 'text-blue-700' };
+    case 'en_livraison': return { bg: 'bg-blue-50', text: 'text-blue-700' };
+    case 'livree': return { bg: 'bg-emerald-50', text: 'text-emerald-700' };
+    case 'annulee': return { bg: 'bg-slate-100', text: 'text-slate-600' };
+    case 'refusee': return { bg: 'bg-rose-50', text: 'text-rose-700' };
+    default: return { bg: 'bg-slate-100', text: 'text-slate-600' };
+  }
+};
+
+// ============================================
+// Page
+// ============================================
 export default function MesCommandes() {
   const navigate = useNavigate();
   const { mesCommandes, chargerMesCommandes } = useCommandes();
-  const { estAcheteur, estAuthentifie } = useAuth();
+  const { estAuthentifie, utilisateur } = useAuth();
 
-  const [filtreStatut, setFiltreStatut] = useState('tous');
-  const [chargement, setChargement] = useState(true);
+  const [filtreStatut, setFiltreStatut] = useState('en_cours'); // 'en_cours' | 'livrees' | 'historique'
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -22,356 +115,441 @@ export default function MesCommandes() {
       navigate('/connexion');
       return;
     }
-
     if (estAuthentifie()) {
       chargerMesCommandes();
-      setChargement(false);
     }
   }, [navigate, estAuthentifie, chargerMesCommandes]);
 
-  // Mettre à jour le chargement
-  useEffect(() => {
-    setChargement(mesCommandes.chargement);
-  }, [mesCommandes.chargement]);
+  const toutesCommandes = mesCommandes.liste || [];
 
-  const statuts = [
-    { id: 'tous', label: 'Toutes', color: 'gray' },
-    { id: 'en_attente_pecheur', label: 'En attente du pêcheur', color: 'warning' },
-    { id: 'en_attente_paiement', label: 'En attente de paiement', color: 'info' },
-    { id: 'en_recherche_livreur', label: 'En recherche de livreur', color: 'primary' },
-    { id: 'en_livraison', label: 'En livraison', color: 'secondary' },
-    { id: 'livree', label: 'Livrée', color: 'success' },
-    { id: 'annulee', label: 'Annulée', color: 'danger' },
-    { id: 'refusee', label: 'Refusée', color: 'danger' },
-  ];
-
-  const getStatutLabel = (statut) => {
-    const statutObj = statuts.find(s => s.id === statut);
-    return statutObj ? statutObj.label : statut;
-  };
-
-  const getStatutColor = (statut) => {
-    const statutObj = statuts.find(s => s.id === statut);
-    return statutObj ? statutObj.color : 'gray';
-  };
-
-  const filteredCommandes = mesCommandes.liste.filter(commande => {
-    if (filtreStatut === 'tous') return true;
-    return commande.statut?.toLowerCase() === filtreStatut?.toLowerCase();
-  });
-
-  const formaterPrix = (prix) => {
-    return new Intl.NumberFormat('fr-FR').format(prix || 0) + ' FCFA';
-  };
-
-  const formaterDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-FR', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const calculerTotalCommande = (commande) => {
-    if (!commande.lignes) return 0;
-    return commande.lignes.reduce((total, ligne) => {
-      return total + ((ligne.prix_unitaire || 0) * (ligne.quantite || 0));
-    }, 0);
-  };
-
-  const getQuantiteTotale = (commande) => {
-    if (!commande.lignes) return 0;
-    return commande.lignes.reduce((total, ligne) => total + (ligne.quantite || 0), 0);
-  };
-
-  const getNombreProduits = (commande) => {
-    return commande.lignes ? commande.lignes.length : 0;
-  };
-
-  const getIconeStatut = (statut) => {
-    switch (statut) {
-      case 'en_attente_pecheur':
-        return <Clock className="w-4 h-4" />;
-      case 'en_attente_paiement':
-        return <AlertCircle className="w-4 h-4" />;
-      case 'en_recherche_livreur':
-        return <Truck className="w-4 h-4" />;
-      case 'en_livraison':
-        return <Package className="w-4 h-4" />;
-      case 'livree':
-        return <CheckCircle className="w-4 h-4" />;
-      case 'annulee':
-      case 'refusee':
-        return <XCircle className="w-4 h-4" />;
-      default:
-        return <Package className="w-4 h-4" />;
+  // Commandes filtrées
+  const commandes = useMemo(() => {
+    const sorted = [...toutesCommandes].sort(
+      (a, b) =>
+        new Date(b.date_commande || b.created_at) -
+        new Date(a.date_commande || a.created_at)
+    );
+    if (filtreStatut === 'en_cours') {
+      return sorted.filter((c) => EN_COURS_STATUTS.includes(c.statut));
     }
+    if (filtreStatut === 'livrees') {
+      return sorted.filter((c) => LIVREE_STATUTS.includes(c.statut));
+    }
+    return sorted.filter((c) => HISTORIQUE_STATUTS.includes(c.statut));
+  }, [toutesCommandes, filtreStatut]);
+
+  const compteurs = useMemo(
+    () => ({
+      en_cours: toutesCommandes.filter((c) => EN_COURS_STATUTS.includes(c.statut)).length,
+      livrees: toutesCommandes.filter((c) => LIVREE_STATUTS.includes(c.statut)).length,
+      historique: toutesCommandes.filter((c) => HISTORIQUE_STATUTS.includes(c.statut)).length,
+    }),
+    [toutesCommandes]
+  );
+
+  const calculerTotal = (cmd) =>
+    (cmd.lignes || []).reduce(
+      (sum, l) => sum + Number(l.prix_unitaire || 0) * Number(l.quantite || 0),
+      0
+    );
+
+  const quantiteTotale = (cmd) =>
+    (cmd.lignes || []).reduce((sum, l) => sum + Number(l.quantite || 0), 0);
+
+  const premierProduit = (cmd) => cmd.lignes?.[0]?.produit_detail || {};
+
+  const handleAppeler = (tel) => {
+    if (tel) window.location.href = `tel:${tel}`;
   };
+
+  if (!estAuthentifie()) return null;
 
   return (
-    <div className="min-h-screen bg-[#F7F4EF] p-4 md:p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="d-flex align-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
-              Mes Commandes
-            </h1>
-            <p className="text-gray-600">
-              Suivez l'état de vos commandes et gérer vos achats
-            </p>
-          </div>
-          <Button
-            variant="primary"
-            onClick={() => navigate('/acheteur/accueil')}
-            className="d-flex align-center gap-2"
-          >
-            <ShoppingCart className="w-4 h-4" />
-            <span>Continuer mes achats</span>
-          </Button>
-        </div>
+    <div className="min-h-screen bg-stone-300 font-sans antialiased sm:flex sm:items-center sm:justify-center sm:py-6">
+      <div className="relative flex h-screen w-full max-w-md flex-col overflow-hidden bg-[#FAF6F0] sm:h-[880px] sm:max-h-[92vh] sm:rounded-[40px] sm:border-8 sm:border-stone-300 sm:shadow-2xl">
 
-        {/* Filtres */}
-        <div className="bg-white rounded-xl shadow-sm p-4 mb-6 border border-gray-100">
-          <div className="d-flex flex-wrap gap-2">
-            {statuts.map(statut => (
-              <Button
-                key={statut.id}
-                variant={filtreStatut === statut.id ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => setFiltreStatut(statut.id)}
-                className="flex-0"
-              >
-                {statut.label}
-                {mesCommandes.liste.filter(cmd => cmd.statut === statut.id).length > 0 && (
-                  <span className="ml-2 px-2 py-0.5 bg-white bg-opacity-20 rounded-full text-xs">
-                    {mesCommandes.liste.filter(cmd => cmd.statut === statut.id).length}
+        {/* HEADER */}
+        <header className="flex items-center justify-between px-5 pt-6 pb-3 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <UserMenu
+              photo={utilisateur?.photo}
+              prenom={utilisateur?.prenom}
+              nom={utilisateur?.nom}
+              role="Acheteur"
+              showName={false}
+            />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-base font-extrabold leading-tight text-stone-900 truncate">
+                  {utilisateur?.prenom ? `Chez ${utilisateur.prenom}` : 'Mes commandes'}
+                </h1>
+                {utilisateur?.status_premium?.statut === 'actif' && (
+                  <span className="rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-cyan-800">
+                    PRO
                   </span>
                 )}
-              </Button>
-            ))}
+              </div>
+              <p className="flex items-center gap-1 text-[11px] font-medium text-stone-500">
+                <MapPin size={12} className="text-stone-400" /> Dakar · Plateau
+              </p>
+            </div>
+          </div>
+          <button
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-stone-700 shadow-sm"
+            aria-label="Rechercher"
+          >
+            <Search size={18} />
+          </button>
+        </header>
+
+        {/* TITRE */}
+        <div className="px-5 mb-3 shrink-0">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-2xl font-black text-[#0F2A4A]">Mes Commandes</h2>
+            <span className="text-xs font-medium text-stone-500">
+              {toutesCommandes.length} commande{toutesCommandes.length > 1 ? 's' : ''} au total
+            </span>
           </div>
         </div>
 
-        {/* Statistiques */}
-        <div className="grid grid-cols-2 md-grid-cols-4 gap-4 mb-6">
-          <Card className="border border-gray-100">
-            <Card.Body className="p-4 text-center">
-              <div className="w-12 h-12 bg-primary bg-opacity-10 rounded-xl d-flex align-center justify-center mx-auto mb-3">
-                <Package className="text-primary w-6 h-6" />
-              </div>
-              <p className="text-sm text-gray-500 mb-1">Total</p>
-              <p className="font-bold text-gray-900 text-xl">{mesCommandes.liste.length}</p>
-            </Card.Body>
-          </Card>
-
-          <Card className="border border-gray-100">
-            <Card.Body className="p-4 text-center">
-              <div className="w-12 h-12 bg-warning bg-opacity-10 rounded-xl d-flex align-center justify-center mx-auto mb-3">
-                <Clock className="text-warning w-6 h-6" />
-              </div>
-              <p className="text-sm text-gray-500 mb-1">En attente</p>
-              <p className="font-bold text-gray-900 text-xl">
-                {mesCommandes.liste.filter(cmd => 
-                  cmd.statut === 'en_attente_pecheur' || cmd.statut === 'en_attente_paiement'
-                ).length}
-              </p>
-            </Card.Body>
-          </Card>
-
-          <Card className="border border-gray-100">
-            <Card.Body className="p-4 text-center">
-              <div className="w-12 h-12 bg-secondary bg-opacity-10 rounded-xl d-flex align-center justify-center mx-auto mb-3">
-                <Truck className="text-secondary w-6 h-6" />
-              </div>
-              <p className="text-sm text-gray-500 mb-1">En cours</p>
-              <p className="font-bold text-gray-900 text-xl">
-                {mesCommandes.liste.filter(cmd => 
-                  cmd.statut === 'en_recherche_livreur' || cmd.statut === 'en_livraison'
-                ).length}
-              </p>
-            </Card.Body>
-          </Card>
-
-          <Card className="border border-gray-100">
-            <Card.Body className="p-4 text-center">
-              <div className="w-12 h-12 bg-success bg-opacity-10 rounded-xl d-flex align-center justify-center mx-auto mb-3">
-                <CheckCircle className="text-success w-6 h-6" />
-              </div>
-              <p className="text-sm text-gray-500 mb-1">Terminées</p>
-              <p className="font-bold text-gray-900 text-xl">
-                {mesCommandes.liste.filter(cmd => cmd.statut === 'livree').length}
-              </p>
-            </Card.Body>
-          </Card>
+        {/* ONGLETS */}
+        <div className="no-scrollbar shrink-0 flex gap-2 overflow-x-auto px-5 pb-3">
+          {[
+            { id: 'en_cours', label: 'En cours', count: compteurs.en_cours },
+            { id: 'livrees', label: 'Livrées', count: compteurs.livrees },
+            { id: 'historique', label: 'Historique', count: compteurs.historique },
+          ].map((tab) => {
+            const active = filtreStatut === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setFiltreStatut(tab.id)}
+                className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-bold shadow-sm transition ${
+                  active
+                    ? 'bg-[#0C3B4A] text-white'
+                    : 'bg-white text-stone-600 hover:bg-stone-100'
+                }`}
+              >
+                <span>{tab.label}</span>
+                {tab.count > 0 && (
+                  <span
+                    className={`flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-black ${
+                      active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Liste des commandes */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {/* LISTE */}
+        <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-24 pt-2 space-y-3">
           {mesCommandes.chargement ? (
-            <div className="d-flex justify-center align-center py-12">
+            <div className="py-12 text-center">
               <LoadingSpinner size="lg" />
             </div>
-          ) : filteredCommandes.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-20 h-20 bg-gray-100 rounded-full d-flex align-center justify-center mx-auto mb-4">
-                <Package className="text-gray-400 w-10 h-10" />
+          ) : commandes.length === 0 ? (
+            <div className="mt-12 rounded-3xl border border-stone-100 bg-white p-8 text-center shadow-sm">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-stone-100">
+                <Package size={28} className="text-stone-400" />
               </div>
-              <h3 className="font-semibold text-gray-800 mb-2">
-                {filtreStatut === 'tous' ? 'Aucune commande' : 'Aucune commande avec ce statut'}
+              <h3 className="font-bold text-stone-900 mb-2">
+                {filtreStatut === 'en_cours' && 'Aucune commande en cours'}
+                {filtreStatut === 'livrees' && 'Aucune commande livrée'}
+                {filtreStatut === 'historique' && "Aucune commande dans l'historique"}
               </h3>
-              <p className="text-gray-600 text-sm mb-4">
-                {filtreStatut === 'tous' 
-                  ? 'Vous n\'avez pas encore passé de commande. Explorez notre marché pour découvrir des produits frais!' 
-                  : 'Il n\'y a pas de commande avec ce statut pour le moment.'
-                }
+              <p className="text-xs text-stone-500 mb-4">
+                Explorez le marché pour découvrir des produits frais !
               </p>
-              <Button
-                variant="primary"
+              <button
                 onClick={() => navigate('/acheteur/accueil')}
+                className="rounded-xl bg-[#0C3B4A] px-5 py-2.5 text-xs font-bold text-white"
               >
                 Explorer le marché
-              </Button>
+              </button>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
-              {filteredCommandes.map((commande) => (
-                <div key={commande.id} className="p-4 hover:bg-gray-50 transition">
-                  <div className="d-flex flex-column lg-flex-row gap-4">
-                    {/* Image du premier produit */}
-                    <div className="flex-0">
-                      {commande.lignes && commande.lignes.length > 0 ? (
-                        <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden">
-                          <img
-                            src={commande.lignes[0]?.produit_detail?.media || 
-                                 commande.lignes[0]?.produit_detail?.image || 
-                                 'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?w=200&auto=format&fit=crop&q=80'}
-                            alt={commande.lignes[0]?.produit_detail?.nom}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-16 h-16 bg-gray-100 rounded-lg d-flex align-center justify-center">
-                          <Package className="text-gray-400 w-8 h-8" />
-                        </div>
-                      )}
+            commandes.map((cmd) => {
+              const badge = getStatutCouleur(cmd.statut);
+              const prod = premierProduit(cmd);
+              const montant = calculerTotal(cmd);
+              const qte = quantiteTotale(cmd);
+              const dateRef = cmd.date_commande || cmd.created_at;
+              const etapeActuelle = getEtapeActuelle(cmd.statut);
+              const pecheurNom =
+                cmd.nom_pecheur ||
+                `${prod.pecheur_prenom || ''} ${prod.pecheur_nom || ''}`.trim();
+              const pecheurVille = prod.adresse || 'Dakar';
+              const livreurNom = cmd.livreur_nom || null;
+
+              return (
+                <article
+                  key={cmd.id}
+                  className="overflow-hidden rounded-3xl border border-stone-100 bg-white shadow-sm"
+                >
+                  {/* Bandeau haut : date + badge statut */}
+                  <div className="flex items-center justify-between px-4 pt-4">
+                    <span className="text-[11px] text-stone-400">{formatDate(dateRef)}</span>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${badge.bg} ${badge.text}`}
+                    >
+                      {getStatutLabel(cmd.statut)}
+                    </span>
+                  </div>
+
+                  {/* Produit principal */}
+                  <div className="flex gap-3 px-4 pt-3 pb-4">
+                    <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-stone-100">
+                      <img
+                        src={
+                          prod.media ||
+                          'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?w=200&auto=format&fit=crop&q=80'
+                        }
+                        alt={prod.nom || 'Produit'}
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src =
+                            'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?w=200';
+                        }}
+                      />
                     </div>
 
-                    {/* Détails */}
-                    <div className="flex-1">
-                      <div className="d-flex flex-column md-flex-row md-justify-between md-align-center gap-2">
-                        <div>
-                          <div className="d-flex align-center gap-2 mb-1">
-                            <h3 className="font-semibold text-gray-900">
-                              Commande #{commande.numero || commande.id}
-                            </h3>
-                            <Badge variant={getStatutColor(commande.statut)} size="sm">
-                              {getStatutLabel(commande.statut)}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-gray-500">
-                            {getNombreProduits(commande)} produit(s) - {getQuantiteTotale(commande)} kg
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-primary text-lg">
-                            {formaterPrix(calculerTotalCommande(commande))}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="d-flex align-center gap-4 text-sm text-gray-600 mt-3">
-                        <div className="d-flex align-center gap-1">
-                          <Calendar className="w-4 h-4" />
-                          <span>{formaterDate(commande.date_commande)}</span>
-                        </div>
-                        <div className="d-flex align-center gap-1">
-                          <MapPin className="w-4 h-4" />
-                          <span>{commande.adresse_livraison || 'Adresse non spécifiée'}</span>
-                        </div>
-                        <div className="d-flex align-center gap-1">
-                          <User className="w-4 h-4" />
-                          <span>{commande.nom_pecheur || 'Pêcheur'}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex-0 d-flex align-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(`/acheteur/commande/${commande.id}`)}
-                        className="d-flex align-center gap-1"
-                      >
-                        <Eye className="w-4 h-4" />
-                        <span className="d-none md-d-inline">Voir</span>
-                      </Button>
-
-                      {commande.statut === 'en_attente_paiement' && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => navigate(`/acheteur/paiement/${commande.id}`)}
-                        >
-                          Payer
-                        </Button>
-                      )}
-
-                      {['en_attente_pecheur', 'en_attente_paiement'].includes(commande.statut) && (
-                        <Button
-                          variant="danger-outline"
-                          size="sm"
-                          onClick={() => navigate(`/acheteur/commande/${commande.id}/annuler`)}
-                        >
-                          Annuler
-                        </Button>
-                      )}
-
-                      {commande.statut === 'en_livraison' && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => navigate(`/acheteur/suivi-livraison/${commande.id}`)}
-                          className="d-flex align-center gap-1"
-                        >
-                          <Truck className="w-4 h-4" />
-                          <span className="d-none md-d-inline">Suivre</span>
-                        </Button>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-base font-extrabold text-[#0F2A4A] leading-snug">
+                        {prod.nom || 'Produit'}
+                      </h3>
+                      <p className="text-[11px] text-stone-500 mt-0.5 truncate">
+                        {prod.categorie === 'fruit_de_mer' ? 'Fruit de mer' : 'Poisson'} • {qte} kg
+                      </p>
+                      <p className="mt-2 text-lg font-black text-[#0F2A4A]">
+                        {formatPrice(montant)}
+                      </p>
+                      {cmd.lignes?.length > 1 && (
+                        <p className="text-[10px] text-stone-400 mt-0.5">
+                          + {cmd.lignes.length - 1} autre
+                          {cmd.lignes.length > 2 ? 's' : ''} produit
+                          {cmd.lignes.length > 2 ? 's' : ''}
+                        </p>
                       )}
                     </div>
                   </div>
 
-                  {/* Produits de la commande (mobile) */}
-                  <div className="mt-3 d-flex gap-2 lg-d-none">
-                    {commande.lignes?.slice(0, 2).map((ligne, index) => (
-                      <div
-                        key={index}
-                        className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden"
-                        title={ligne.produit_detail?.nom}
+                  {/* Carte pêcheur */}
+                  {pecheurNom && (
+                    <div className="mx-4 mb-3 flex items-center justify-between rounded-2xl bg-[#F7F4EF] px-3 py-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0C3B4A] text-white text-xs font-bold">
+                          {pecheurNom.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-stone-900 truncate">
+                            {pecheurNom}
+                          </p>
+                          <p className="text-[10px] text-stone-500 truncate flex items-center gap-1">
+                            <MapPin size={9} /> {pecheurVille}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleAppeler(cmd.telephone_pecheur)}
+                        disabled={!cmd.telephone_pecheur}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 transition hover:bg-emerald-200 disabled:opacity-40"
+                        aria-label="Appeler le pêcheur"
                       >
-                        <img
-                          src={ligne.produit_detail?.media || ligne.produit_detail?.image || 
-                               'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?w=100&auto=format&fit=crop&q=80'}
-                          alt={ligne.produit_detail?.nom}
-                          className="w-full h-full object-cover"
-                        />
+                        <Phone size={14} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Timeline de suivi — UNIQUEMENT dans l'onglet "En cours" */}
+                  {filtreStatut === 'en_cours' && cmd.statut !== 'en_attente_pecheur' && (
+                    <div className="mx-4 mb-3 border-t border-stone-100 pt-3">
+                      <p className="flex items-center gap-1.5 text-[11px] font-bold text-stone-700 mb-3">
+                        <Truck size={12} className="text-[#0C3B4A]" />
+                        Suivi de la marée à l'assiette
+                        <span className="ml-auto text-[10px] text-stone-400">
+                          {ETAPES.length} étapes
+                        </span>
+                      </p>
+
+                      <div className="space-y-3">
+                        {ETAPES.map((etape, idx) => {
+                          const Icone = etape.icone;
+                          const estTerminee = idx < etapeActuelle;
+                          const estActuelle = idx === etapeActuelle;
+
+                          return (
+                            <div key={etape.key} className="relative flex gap-3">
+                              <div className="flex flex-col items-center">
+                                <div
+                                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                                    estTerminee
+                                      ? 'bg-emerald-500 text-white'
+                                      : estActuelle
+                                      ? 'bg-[#0C3B4A] text-white'
+                                      : 'bg-stone-100 text-stone-400'
+                                  }`}
+                                >
+                                  <Icone size={13} />
+                                </div>
+                                {idx < ETAPES.length - 1 && (
+                                  <div
+                                    className={`w-0.5 flex-1 my-0.5 ${
+                                      estTerminee ? 'bg-emerald-500' : 'bg-stone-200'
+                                    }`}
+                                  />
+                                )}
+                              </div>
+
+                              <div className="flex-1 pb-1">
+                                <p
+                                  className={`text-xs font-bold ${
+                                    estTerminee
+                                      ? 'text-emerald-700'
+                                      : estActuelle
+                                      ? 'text-[#0C3B4A]'
+                                      : 'text-stone-400'
+                                  }`}
+                                >
+                                  {etape.label}
+                                </p>
+
+                                {estActuelle && cmd.statut === 'en_livraison' && (
+                                  <div className="mt-2 rounded-2xl bg-[#0F2A4A] p-3 text-white">
+                                    <div className="flex justify-between items-start gap-2">
+                                      <div className="min-w-0">
+                                        <p className="text-[10px] text-white/70">
+                                          Arrivée estimée dans 18 min
+                                        </p>
+                                        <p className="text-xs font-bold">
+                                          {livreurNom || 'Livreur en route'}
+                                        </p>
+                                      </div>
+                                      <span className="shrink-0 rounded-lg bg-white/10 px-2 py-1 text-[10px] font-bold">
+                                        {cmd.adresse_livraison?.split(',')[0] || 'Dakar'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {estActuelle &&
+                                  etapeActuelle === 0 &&
+                                  cmd.statut === 'en_attente_pecheur' && (
+                                    <p className="mt-1 text-[10px] text-stone-500">
+                                      Le pêcheur vérifie ses stocks...
+                                    </p>
+                                  )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                    {commande.lignes && commande.lignes.length > 2 && (
-                      <div className="w-12 h-12 bg-gray-100 rounded-lg d-flex align-center justify-center">
-                        <span className="text-xs text-gray-500">+{commande.lignes.length - 2}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                    </div>
+                  )}
+
+                  {/* Actions — dépendent de l'onglet actif */}
+                  {filtreStatut === 'en_cours' && (
+                    <div className="flex gap-2 px-4 pb-4 pt-2">
+                      <button
+                        onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
+                        className="flex-1 rounded-2xl bg-stone-100 px-4 py-3 text-xs font-bold text-stone-700 transition hover:bg-stone-200"
+                      >
+                        Itinéraire
+                      </button>
+                      <button
+                        onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
+                        className="flex-1 rounded-2xl bg-[#0F2A4A] px-4 py-3 text-xs font-bold text-white transition hover:bg-[#0a1f38]"
+                      >
+                        {cmd.statut === 'en_livraison'
+                          ? `Appeler ${livreurNom?.split(' ')[0] || 'le livreur'}`
+                          : 'Voir le détail'}
+                      </button>
+                    </div>
+                  )}
+
+                  {filtreStatut === 'livrees' && (
+                    <div className="flex gap-2 px-4 pb-4 pt-2">
+                      <button
+                        onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
+                        className="flex-1 rounded-2xl bg-stone-100 px-4 py-3 text-xs font-bold text-stone-700 transition hover:bg-stone-200"
+                      >
+                        Voir le détail
+                      </button>
+                      <button
+                        onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
+                        className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white transition hover:bg-emerald-700"
+                      >
+                        Noter le pêcheur
+                      </button>
+                    </div>
+                  )}
+
+                  {filtreStatut === 'historique' && (
+                    <div className="px-4 pb-4 pt-2">
+                      <button
+                        onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
+                        className="w-full rounded-2xl bg-stone-100 px-4 py-3 text-xs font-bold text-stone-700 transition hover:bg-stone-200"
+                      >
+                        Voir le détail
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Bouton PAYER si commande en attente paiement */}
+                  {cmd.statut === 'en_attente_paiement' && (
+                    <div className="px-4 pb-4 pt-2">
+                      <button
+                        onClick={() => navigate(`/acheteur/commande/attente/${cmd.id}`)}
+                        className="w-full rounded-2xl bg-[#FF6B4A] px-4 py-3 text-xs font-black text-white transition hover:bg-[#E85A39]"
+                      >
+                        Payer maintenant
+                      </button>
+                    </div>
+                  )}
+                </article>
+              );
+            })
           )}
-        </div>
+        </main>
+
+        {/* BOTTOM NAV */}
+        <nav className="absolute bottom-3 left-4 right-4 z-30 flex items-center justify-between rounded-full border border-stone-200/60 bg-white/95 px-5 py-2.5 shadow-xl backdrop-blur-md">
+          <button
+            onClick={() => navigate('/acheteur/accueil')}
+            className="flex flex-col items-center gap-0.5 font-medium text-stone-400 hover:text-stone-700 transition"
+          >
+            <Store size={19} />
+            <span className="text-[10px]">Marché</span>
+          </button>
+
+          <button
+            onClick={() => navigate('/acheteur/commandes')}
+            className="flex flex-col items-center gap-0.5 font-extrabold text-[#0C3B4A] transition"
+          >
+            <Package size={19} />
+            <span className="text-[10px]">Commandes</span>
+          </button>
+
+          <button
+            onClick={() => navigate('/acheteur/alertes')}
+            className="flex flex-col items-center gap-0.5 font-medium text-stone-400 hover:text-stone-700 transition"
+          >
+            <Bell size={19} />
+            <span className="text-[10px]">Alertes</span>
+          </button>
+
+          <button
+            onClick={() => navigate('/acheteur/premium')}
+            className="flex flex-col items-center gap-0.5 font-medium text-stone-400 hover:text-stone-700 transition"
+          >
+            <Star size={19} />
+            <span className="text-[10px]">Premium</span>
+          </button>
+        </nav>
       </div>
     </div>
   );

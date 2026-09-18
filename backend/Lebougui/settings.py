@@ -25,7 +25,12 @@ SECRET_KEY = 'django-insecure-ux(hiug3v&#xdf=yci0em)&b^t-%e&avada!5u$!!u*p1v8!u4
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '.ngrok-free.dev',
+    '.ngrok.io',
+]
 
 
 REST_FRAMEWORK = {
@@ -40,11 +45,25 @@ from datetime import timedelta
 
 SIMPLE_JWT = {
     # Durée de vie du jeton d'accès (utilisé pour chaque requête)
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     
     # Durée de vie du jeton de rafraîchissement (utilisé pour obtenir un nouveau jeton d'accès)
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
 }
+
+
+
+
+
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'https://*.ngrok-free.dev',
+    'https://*.ngrok.io',
+]
+
+
+
 
 
 # Application definition
@@ -177,3 +196,22 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+
+
+
+# ============================================================
+# PAYDUNYA
+# ============================================================
+PAYDUNYA_MODE = "test"   # "test" ou "live"
+
+PAYDUNYA_MASTER_KEY = "5bIyo8Sc-Ja1W-KeZr-INqD-BHwiwKBKM6xQ"
+PAYDUNYA_PRIVATE_KEY = "test_private_19K74GhfpF5LR1htAJhAyyWBmiD"
+PAYDUNYA_PUBLIC_KEY = "test_public_RQQMOWT5hHwKedJgRSj0l6AlHM2"
+PAYDUNYA_TOKEN = "2JWGSXxO10S9uLF9izBD"
+
+# URL publique (ngrok) pour que PayDunya puisse appeler le webhook
+PAYDUNYA_CALLBACK_URL = "https://quit-overhead-goggles.ngrok-free.dev/api/webhooks/paydunya/"
+
+# URLs de redirection après paiement
+PAYDUNYA_RETURN_URL = "http://localhost:5173/acheteur/retour-paiement"
+PAYDUNYA_CANCEL_URL = "http://localhost:5173/acheteur/panier"

@@ -47,6 +47,7 @@ class Commande(models.Model):
     statut = models.CharField(
         max_length=30, choices=Statut.choices, default=Statut.EN_ATTENTE_PECHEUR
     )
+    paydunya_token = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
         return f"Commande {self.numero} - {self.pecheur.nom}"

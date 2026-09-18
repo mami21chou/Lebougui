@@ -1,12 +1,15 @@
+import hashlib
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+import requests
 from rest_framework import viewsets, status, permissions
-from rest_framework.decorators import action
+from rest_framework.decorators import APIView, action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 
-from utilisateurs.models import Utilisateur, Premium
+from django.conf import settings
+from utilisateurs.models import Premium, Utilisateur
 from .models import Commande, Livraison, Note, Alerte
 from .serializers import (
     CommandeSerializer,
@@ -161,6 +164,43 @@ class CommandeViewSet(viewsets.ModelViewSet):
         commande.statut = Commande.Statut.ANNULEE
         commande.save()
         return Response(CommandeSerializer(commande).data, status=status.HTTP_200_OK)
+    # commandes/views.py
+
+    @action(detail=True, methods=["post"], permission_classes=[EstAcheteur], url_path="payer-simule")
+    def payer_simule(self, request, pk=None):
+        """
+        Simulation de paiement (remplace PayDunya pour la soutenance).
+        Passe la commande en 'payee' si elle est en attente de paiement.
+        """
+        commande = self.get_object()
+
+        # Sécurité : seul l'acheteur propriétaire peut payer
+        if request.user.id != commande.acheteur_id:
+            return Response(
+                {"erreur": "Seul l'acheteur de cette commande peut payer."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if commande.statut != Commande.Statut.EN_ATTENTE_PAIEMENT:
+            return Response(
+                {"erreur": "Le paiement n'est possible qu'après confirmation du pêcheur."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        moyen = request.data.get("moyen_paiement", "wave")
+        telephone = request.data.get("telephone", "")
+
+        commande.statut = Commande.Statut.PAYEE
+        commande.save(update_fields=["statut"])
+
+        data = CommandeSerializer(commande).data
+        data["moyen_paiement"] = moyen
+        data["telephone"] = telephone
+
+        print(f">>> [SIMULATION] Commande {commande.numero} → PAYEE via {moyen} ({telephone})")
+
+        return Response(data, status=status.HTTP_200_OK)
+    # commandes/views.py — APIView publique
 
 
 # =========================================================

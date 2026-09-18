@@ -24,6 +24,9 @@ import Alertes from "./pages/acheteur/Alertes";
 import SuiviLivraison from "./pages/acheteur/SuiviLivraison";
 import ItineraireLivreur from "./pages/acheteur/ItineraireLivreur";
 import Premium from "./pages/acheteur/Premium";
+import RetourPaiement from "./pages/acheteur/RetourPaiement";
+import AttenteConfirmation from "./pages/acheteur/AttenteConfirmation";
+
 
 export default function App() {
   return (
@@ -54,12 +57,15 @@ export default function App() {
         <Route path="/acheteur/produit/:id" element={<ProduitDetails />} />
         <Route path="/acheteur/panier" element={<Panier />} />
         <Route path="/acheteur/commandes" element={<MesCommandes />} />
+        <Route path="/acheteur/commande/attente/:id" element={<AttenteConfirmation />} />
         <Route path="/acheteur/commande/:id" element={<CommandeDetails />} />
         <Route path="/acheteur/commande/:id/annuler" element={<CommandeDetails />} />
         <Route path="/acheteur/alertes" element={<Alertes />} />
         <Route path="/acheteur/suivi-livraison/:id" element={<SuiviLivraison />} />
         <Route path="/acheteur/itineraire/:id" element={<ItineraireLivreur />} />
         <Route path="/acheteur/premium" element={<Premium />} />
+        <Route path="/acheteur/retour-paiement" element={<RetourPaiement />} />
+
 
         {/* Route par défaut selon le rôle */}
         <Route path="/accueil" element={<Navigate to="/acheteur/accueil" replace />} />

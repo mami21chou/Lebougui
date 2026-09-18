@@ -1,125 +1,264 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Search, Bell, Mic, Play, Pause, MapPin, 
-  Edit3, Trash2, Clock, Store, ShoppingBag, 
-  FileText, TrendingUp 
+import {
+  Search, Bell, Mic, Play, Pause, MapPin,
+  Edit3, Trash2, Clock, Store, ShoppingBag,
+  FileText, TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePublications } from '../../context/PublicationContext';
+import { useAudio } from '../../context/AudioContext';
 
-// --- Composant Lecteur Audio Épuré avec Forme d'Onde ---
-const AudioPlayer = ({ audioUrl, duration = '0:28' }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = useRef(null);
+// ============================================================
+// Lecteur audio — utilise le contexte global (un seul à la fois)
+// ============================================================
+const AudioPlayer = ({ id, audioUrl, duration = '0:28' }) => {
+  const { currentId, play, pause } = useAudio();
+  const isPlaying = currentId === id;
 
   const togglePlay = () => {
-    if (!audioRef.current) return;
+    if (!audioUrl) return;
     if (isPlaying) {
-      audioRef.current.pause();
+      pause();
     } else {
-      audioRef.current.play().catch(() => {});
+      play(id, audioUrl);
     }
-    setIsPlaying(!isPlaying);
   };
 
   return (
-    <div className="bg-[#FFFBF5] rounded-xl p-2.5 flex items-center justify-between border border-[#F3E8D8]/60 my-2">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={togglePlay}
-          className="w-9 h-9 rounded-full bg-[#FF6B35] text-white flex items-center justify-center shadow-md shadow-[#FF6B35]/20 hover:scale-105 transition-transform"
-        >
-          {isPlaying ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
-        </button>
-        <div className="flex flex-col">
-          <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
-            Message vocal (Wolof)
-          </span>
-          {/* Simulation d'onde audio */}
-          <div className="flex items-center gap-0.5 h-3 mt-1">
-            {[40, 70, 30, 90, 60, 100, 40, 80, 50, 90, 30, 70, 40, 20].map((h, idx) => (
-              <span
-                key={idx}
-                className={`w-0.5 rounded-full transition-all duration-300 ${
-                  isPlaying ? 'bg-teal-500' : 'bg-slate-300'
-                }`}
-                style={{ height: `${isPlaying ? Math.max(20, (h + Math.random() * 20) % 100) : h}%` }}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-      <span className="text-[10px] font-semibold text-slate-400">{duration}</span>
-      {audioUrl && <audio ref={audioRef} src={audioUrl} onEnded={() => setIsPlaying(false)} />}
+    <div className="bg-slate-50 rounded-xl px-3 py-2 flex items-center gap-3 border border-slate-200 my-2">
+      <button
+        type="button"
+        onClick={togglePlay}
+        aria-label={isPlaying ? 'Pause' : 'Lecture'}
+        className="w-8 h-8 shrink-0 rounded-full bg-orange-500 text-white flex items-center justify-center hover:bg-orange-600 transition-colors"
+      >
+        {isPlaying ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
+      </button>
+
+      <span className="text-[11px] font-medium text-slate-600 flex-1 truncate">
+        Vocal wolof
+      </span>
+
+      <span className="text-[10px] text-slate-400 shrink-0">{duration}</span>
     </div>
   );
 };
 
-// --- Composant Principal ---
+// ============================================================
+// Helpers
+// ============================================================
+const formatRelative = (dateStr) => {
+  if (!dateStr) return "Aujourd'hui";
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "À l'instant";
+  if (min < 60) return `Il y a ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `Il y a ${h}h`;
+  const j = Math.floor(h / 24);
+  if (j < 7) return `Il y a ${j}j`;
+  return new Date(dateStr).toLocaleDateString('fr-FR');
+};
+
+const initiales = (prenom = '', nom = '') =>
+  `${prenom[0] || ''}${nom[0] || ''}`.toUpperCase() || 'P';
+
+// ============================================================
+// Sous-composants
+// ============================================================
+const EmptyState = ({ message }) => (
+  <div className="bg-white rounded-2xl p-6 text-center shadow-sm">
+    <p className="text-xs text-slate-500">{message}</p>
+  </div>
+);
+
+const InfoCard = ({ info, isMine, showActions, onEdit, onDelete }) => {
+  const auteurNom =
+    info.pecheur_nom || info.pecheur_prenom
+      ? `${info.pecheur_prenom || ''} ${info.pecheur_nom || ''}`.trim()
+      : 'Pêcheur';
+  const init = initiales(info.pecheur_prenom, info.pecheur_nom);
+
+  return (
+    <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/50 space-y-2.5">
+      {/* Auteur */}
+      <div className="flex items-center gap-2.5">
+        <div className="w-9 h-9 rounded-full bg-teal-600 text-white font-bold text-xs flex items-center justify-center">
+          {init}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="text-xs font-bold text-slate-900 truncate">
+            {auteurNom} {isMine && <span className="text-teal-600">(Moi)</span>}
+          </h4>
+          <p className="text-[10px] text-slate-400">
+            {formatRelative(info.date_publication)}
+          </p>
+        </div>
+      </div>
+
+      {/* Localisation */}
+      <p className="text-[11px] text-orange-500 font-medium flex items-center gap-1">
+        <MapPin size={11} />
+        {info.adresse || 'Zone non précisée'}
+      </p>
+
+      {/* Transcription wolof */}
+      <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-700 italic border border-slate-100">
+        « {info.texte_transcrit || 'Aucune transcription'} »
+      </div>
+
+      {/* Audio — id unique par info pour la gestion globale */}
+      <AudioPlayer
+        id={`info-${info.id}`}
+        audioUrl={info.audio}
+        duration={info.duree_audio || '0:18'}
+      />
+
+      {/* Actions (uniquement Mes posts) */}
+      {showActions && isMine && (
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            onClick={onEdit}
+            className="flex-1 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg flex items-center justify-center gap-1 transition-colors"
+          >
+            <Edit3 size={13} />
+            Modifier
+          </button>
+          <button
+            onClick={onDelete}
+            className="flex-1 py-1.5 px-3 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg flex items-center justify-center gap-1 transition-colors"
+          >
+            <Trash2 size={13} />
+            Supprimer
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ProduitCard = ({ prod, estDisponible, onToggle }) => (
+  <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200/50">
+    {prod.media && (
+      <div className="h-44 w-full relative bg-slate-100">
+        <img src={prod.media} alt={prod.nom} className="w-full h-full object-cover" />
+      </div>
+    )}
+
+    <div className="p-3.5 space-y-2">
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-[#0F2A4A]">{prod.nom}</h3>
+          <p className="text-[11px] text-slate-500">
+            {prod.categorie === 'fruit_de_mer' ? 'Fruit de mer' : 'Poisson'} · {prod.prix} FCFA/kg
+          </p>
+        </div>
+        <span className="text-xs font-bold text-orange-500">{prod.quantite} kg</span>
+      </div>
+
+      {prod.texte_transcrit && (
+        <div className="bg-slate-50 rounded-xl p-2.5 text-[11px] text-slate-700 italic border border-slate-100">
+          « {prod.texte_transcrit} »
+        </div>
+      )}
+
+      {/* Audio — id unique par produit */}
+      <AudioPlayer
+        id={`prod-${prod.id}`}
+        audioUrl={prod.audio}
+        duration={prod.duree_audio || '0:28'}
+      />
+
+      <div className="pt-2 flex items-center justify-between border-t border-slate-100">
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <Clock size={12} />
+          <span>
+            Publié : <strong>{formatRelative(prod.date_publication)}</strong>
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={estDisponible ? 'Désactiver' : 'Activer'}
+          className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-200 flex items-center ${
+            estDisponible ? 'bg-emerald-500' : 'bg-slate-300'
+          }`}
+        >
+          <span
+            className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-200 ${
+              estDisponible ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+// ============================================================
+// Page principale
+// ============================================================
 const MesPublications = () => {
   const { utilisateur, estPecheur } = useAuth();
-  const { mesPublications, chargerMesPublications } = usePublications();
+  const {
+    publications,
+    mesPublications,
+    chargerPublications,
+    chargerMesPublications,
+  } = usePublications();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
-  const [ongletActif, setOngletActif] = useState('mes_prises'); // 'informations', 'mes_posts', 'mes_prises'
+  const [ongletActif, setOngletActif] = useState('mes_prises');
   const [statutsProduits, setStatutsProduits] = useState({});
 
   useEffect(() => {
-    const loadData = async () => {
+    const load = async () => {
       try {
         if (!estPecheur()) {
           navigate('/connexion', { replace: true });
           return;
         }
-        await chargerMesPublications();
+        await Promise.all([chargerPublications(), chargerMesPublications()]);
       } catch (err) {
-        console.error('Erreur lors du chargement des données:', err);
+        console.error('Erreur lors du chargement:', err);
       } finally {
         setLoading(false);
       }
     };
-    loadData();
-  }, [estPecheur, chargerMesPublications, navigate]);
+    load();
+  }, [estPecheur, chargerPublications, chargerMesPublications, navigate]);
 
-  // Synchroniser le statut de disponibilité localement
   useEffect(() => {
     if (mesPublications?.produits) {
-      const initialMap = {};
+      const map = {};
       mesPublications.produits.forEach((p) => {
-        initialMap[p.id] = p.disponible ?? p.statut === 'visible';
+        map[p.id] = p.statut !== 'rupture';
       });
-      setStatutsProduits(initialMap);
+      setStatutsProduits(map);
     }
   }, [mesPublications]);
 
-  // Basculer la disponibilité d'une prise (Toggle disponible / terminé)
-  const handleToggleStatut = async (id) => {
-    const nvStatut = !statutsProduits[id];
-    setStatutsProduits((prev) => ({ ...prev, [id]: nvStatut }));
-
-    try {
-      // Appel API pour mettre à jour la disponibilité en BD
-      // await PublicationService.changerDisponibilite(id, nvStatut);
-    } catch (err) {
-      console.error('Erreur de modification du statut:', err);
-      setStatutsProduits((prev) => ({ ...prev, [id]: !nvStatut })); // Rollback si erreur
-    }
+  const handleToggleStatut = (id) => {
+    setStatutsProduits((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   if (!estPecheur()) return null;
 
-  const totalInfos = mesPublications?.informations?.length || 0;
-  const totalPosts = (mesPublications?.produits?.length || 0) + totalInfos;
-  const totalPrises = mesPublications?.produits?.length || 0;
+  const toutesLesInformations = publications?.informations || [];
+  const mesInformations = mesPublications?.informations || [];
+  const mesProduits = mesPublications?.produits || [];
+
+  const totalInfos = toutesLesInformations.length;
+  const totalMesPosts = mesInformations.length;
+  const totalMesPrises = mesProduits.length;
 
   return (
     <div className="min-h-screen bg-[#F7F4EF] text-slate-800 font-sans pb-24 max-w-md mx-auto relative shadow-xl">
-      
-      {/* 1. Header principal */}
+
+      {/* HEADER */}
       <header className="px-5 pt-6 pb-2 flex items-center justify-between">
         <h1 className="text-2xl font-black text-[#0F2A4A] tracking-tight">Publications</h1>
         <div className="flex items-center gap-2">
@@ -133,7 +272,7 @@ const MesPublications = () => {
         </div>
       </header>
 
-      {/* 2. Bannière d'appel à l'action */}
+      {/* BANNIÈRE */}
       <div className="px-5 my-3">
         <div className="bg-[#0F2A4A] rounded-2xl p-4 text-white flex items-center justify-between shadow-lg shadow-[#0F2A4A]/10 relative overflow-hidden">
           <div className="z-10 max-w-[65%]">
@@ -143,204 +282,145 @@ const MesPublications = () => {
           </div>
           <button
             onClick={() => navigate('/pecheur/publication/nouvelle')}
-            className="z-10 px-4 py-2 bg-[#FF6B35] hover:bg-[#ff5a20] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md shadow-[#FF6B35]/30 transition-all"
+            className="z-10 px-4 py-2 bg-[#FF6B35] hover:bg-[#ff5a20] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md shadow-[#FF6B35]/30"
           >
             <Mic size={14} />
             Publier
           </button>
-          {/* Motif en arrière-plan */}
           <div className="absolute -right-4 -bottom-6 w-24 h-24 rounded-full bg-white/5 pointer-events-none" />
         </div>
       </div>
 
-      {/* 3. Onglets de filtrage */}
+      {/* ONGLETS */}
       <div className="px-5 my-4">
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-          <button
-            onClick={() => setOngletActif('informations')}
-            className={`py-2 px-4 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              ongletActif === 'informations'
-                ? 'bg-[#0F2A4A] text-white shadow-md'
-                : 'bg-white text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Informations
-            {totalInfos > 0 && (
-              <span className={`px-1.5 py-0.2 text-[10px] rounded-full ${ongletActif === 'informations' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                {totalInfos}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setOngletActif('mes_posts')}
-            className={`py-2 px-4 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              ongletActif === 'mes_posts'
-                ? 'bg-[#0F2A4A] text-white shadow-md'
-                : 'bg-white text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Mes posts
-            {totalPosts > 0 && (
-              <span className={`px-1.5 py-0.2 text-[10px] rounded-full ${ongletActif === 'mes_posts' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                {totalPosts}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setOngletActif('mes_prises')}
-            className={`py-2 px-4 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              ongletActif === 'mes_prises'
-                ? 'bg-[#0F2A4A] text-white shadow-md'
-                : 'bg-white text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Mes prises
-          </button>
+          {[
+            { id: 'informations', label: 'Informations', count: totalInfos },
+            { id: 'mes_posts', label: 'Mes posts', count: totalMesPosts },
+            { id: 'mes_prises', label: 'Mes prises', count: totalMesPrises },
+          ].map((tab) => {
+            const active = ongletActif === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setOngletActif(tab.id)}
+                className={`py-2 px-4 rounded-full text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition-all ${
+                  active
+                    ? 'bg-[#0F2A4A] text-white shadow-md'
+                    : 'bg-white text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span
+                    className={`px-1.5 text-[10px] rounded-full ${
+                      active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* 4. Titre de section contextuel */}
-      {ongletActif === 'mes_prises' && (
-        <div className="px-5 mb-2">
-          <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-            Mes prises en vente directe
-          </h2>
-        </div>
-      )}
+      {/* TITRE DE SECTION */}
+      <div className="px-5 mb-2">
+        <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+          {ongletActif === 'informations' && 'Toutes les informations de pêche'}
+          {ongletActif === 'mes_posts' && "Mes posts d'information"}
+          {ongletActif === 'mes_prises' && 'Mes prises en vente directe'}
+        </h2>
+      </div>
 
-      {/* 5. Liste des publications */}
+      {/* LISTE */}
       <main className="px-5 space-y-4">
         {loading ? (
-          <div className="py-12 text-center text-slate-400 text-sm">Chargement de vos publications...</div>
+          <div className="py-12 text-center text-slate-400 text-sm">
+            Chargement de vos publications...
+          </div>
         ) : (
           <>
-            {/* --- CASE 1 : MES PRISES EN VENTE --- */}
-            {ongletActif === 'mes_prises' && (
-              mesPublications?.produits?.length === 0 ? (
-                <div className="bg-white rounded-2xl p-6 text-center shadow-sm">
-                  <p className="text-xs text-slate-500">Aucune prise en vente pour le moment.</p>
-                </div>
+            {ongletActif === 'informations' &&
+              (toutesLesInformations.length === 0 ? (
+                <EmptyState message="Aucune information de pêche pour le moment." />
               ) : (
-                mesPublications.produits.map((prod) => {
-                  const estDisponible = statutsProduits[prod.id] ?? true;
+                toutesLesInformations.map((info) => (
+                  <InfoCard
+                    key={info.id}
+                    info={info}
+                    isMine={info.pecheur === utilisateur?.id}
+                    showActions={false}
+                  />
+                ))
+              ))}
 
-                  return (
-                    <div key={prod.id} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200/50">
-                      {/* Image de la prise */}
-                      {prod.media && (
-                        <div className="h-44 w-full relative bg-slate-100">
-                          <img src={prod.media} alt={prod.nom} className="w-full h-full object-cover" />
-                        </div>
-                      )}
+            {ongletActif === 'mes_posts' &&
+              (mesInformations.length === 0 ? (
+                <EmptyState message="Vous n'avez publié aucune information." />
+              ) : (
+                mesInformations.map((info) => (
+                  <InfoCard
+                    key={info.id}
+                    info={info}
+                    isMine={true}
+                    showActions={true}
+                    onEdit={() => alert(`Modifier info #${info.id}`)}
+                    onDelete={() => alert(`Supprimer info #${info.id}`)}
+                  />
+                ))
+              ))}
 
-                      <div className="p-3.5 space-y-2">
-                        {/* Audio */}
-                        <AudioPlayer audioUrl={prod.audio_url} duration={prod.duree_audio || '0:28'} />
-
-                        {/* Pied de carte : Date & Toggle d'activation */}
-                        <div className="pt-2 flex items-center justify-between border-t border-slate-100">
-                          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                            <Clock size={12} />
-                            <span>Publié : <strong>{prod.date_heure_format || 'Aujourd\'hui, 08:30'}</strong></span>
-                          </div>
-
-                          {/* Toggle Switch */}
-                          <button
-                            type="button"
-                            onClick={() => handleToggleStatut(prod.id)}
-                            className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none flex items-center ${
-                              estDisponible ? 'bg-emerald-500' : 'bg-slate-300'
-                            }`}
-                          >
-                            <span
-                              className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${
-                                estDisponible ? 'translate-x-5' : 'translate-x-0'
-                              }`}
-                            />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )
-            )}
-
-            {/* --- CASE 2 : INFORMATIONS ET POSTS --- */}
-            {(ongletActif === 'informations' || ongletActif === 'mes_posts') && (
-              mesPublications?.informations?.map((info) => (
-                <div key={info.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/50 space-y-2.5">
-                  {/* Profil utilisateur */}
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-full bg-teal-600 text-white font-bold text-xs flex items-center justify-center">
-                      {info.initiales || 'AS'}
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-900">{info.auteur || 'Assane Seck (Moi)'}</h4>
-                      <p className="text-[10px] text-slate-400">{info.date_relative || 'Aujourd\'hui 16:05'}</p>
-                    </div>
-                  </div>
-
-                  {/* Titre & Localisation */}
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900 leading-snug">
-                      {info.titre || 'Courants violents et dérive constatée vers Ngor'}
-                    </h3>
-                    <p className="text-[11px] text-orange-500 font-medium flex items-center gap-1 mt-0.5">
-                      <MapPin size={11} />
-                      {info.adresse || 'Fosse de Kayar & Passage Ile de Ngor'}
-                    </p>
-                  </div>
-
-                  {/* Traduction / Description */}
-                  <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 italic border border-slate-100">
-                    « {info.description || 'Attention aux petites pirogues, courant fort orienté Sud-Ouest. Restez groupés jusqu\'à midi.'} »
-                  </div>
-
-                  {/* Audio */}
-                  <AudioPlayer audioUrl={info.audio_url} duration={info.duree_audio || '0:18'} />
-
-                  {/* Boutons d'action pour mes posts */}
-                  {ongletActif === 'mes_posts' && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <button className="flex-1 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg flex items-center justify-center gap-1 transition-colors">
-                        <Edit3 size={13} />
-                        Modifier
-                      </button>
-                      <button className="flex-1 py-1.5 px-3 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg flex items-center justify-center gap-1 transition-colors">
-                        <Trash2 size={13} />
-                        Supprimer
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
+            {ongletActif === 'mes_prises' &&
+              (mesProduits.length === 0 ? (
+                <EmptyState message="Aucune prise en vente pour le moment." />
+              ) : (
+                mesProduits.map((prod) => (
+                  <ProduitCard
+                    key={prod.id}
+                    prod={prod}
+                    estDisponible={statutsProduits[prod.id] ?? true}
+                    onToggle={() => handleToggleStatut(prod.id)}
+                  />
+                ))
+              ))}
           </>
         )}
       </main>
 
-      {/* 6. Barre de navigation inférieure (Bottom Navigation) */}
+      {/* BOTTOM NAV */}
       <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200/80 px-4 py-2 flex justify-around items-center text-slate-400 z-50">
-        <button onClick={() => navigate('/pecheur/marche')} className="flex flex-col items-center gap-1 text-slate-400 hover:text-teal-600">
+        <button
+          onClick={() => navigate('/pecheur/accueil')}
+          className="flex flex-col items-center gap-1 hover:text-teal-600"
+        >
           <Store size={18} />
           <span className="text-[9px] font-medium">Marché</span>
         </button>
 
-        <button onClick={() => navigate('/pecheur/publications')} className="flex flex-col items-center gap-1 text-teal-600 font-bold relative">
+        <button
+          onClick={() => navigate('/pecheur/publications')}
+          className="flex flex-col items-center gap-1 text-teal-600 font-bold relative"
+        >
           <ShoppingBag size={18} />
           <span className="text-[9px]">Publications</span>
           <span className="w-1 h-1 rounded-full bg-teal-600 absolute -bottom-1" />
         </button>
 
-        <button onClick={() => navigate('/pecheur/commandes')} className="flex flex-col items-center gap-1 text-slate-400 hover:text-teal-600">
+        <button
+          onClick={() => navigate('/pecheur/commandes')}
+          className="flex flex-col items-center gap-1 hover:text-teal-600"
+        >
           <FileText size={18} />
           <span className="text-[9px] font-medium">Commandes</span>
         </button>
 
-        <button onClick={() => navigate('/pecheur/ventes')} className="flex flex-col items-center gap-1 text-slate-400 hover:text-teal-600">
+        <button
+          onClick={() => navigate('/pecheur/ventes')}
+          className="flex flex-col items-center gap-1 hover:text-teal-600"
+        >
           <TrendingUp size={18} />
           <span className="text-[9px] font-medium">Ventes</span>
         </button>

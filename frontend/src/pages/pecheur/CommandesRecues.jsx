@@ -1,18 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Package, MapPin, Calendar, Clock, CheckCircle2, XCircle, AlertTriangle, Eye, Trash2 } from 'lucide-react';
+import { Search, Bell, Phone, Check, X, Package, User, MapPin } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCommandes } from '../../context/CommandeContext';
+import { CommandeService } from '../../services/commandeService';
 
-const CommandesRecues = () => {
-  const { utilisateur, estPecheur } = useAuth();
-  const { mesCommandes, chargerMesCommandes, mettreAJourStatutCommande } = useCommandes();
+const formatPrice = (price) =>
+  `${new Intl.NumberFormat('fr-FR').format(Number(price) || 0)} FCFA`;
+
+const formatRelative = (dateStr) => {
+  if (!dateStr) return '';
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return "à l'instant";
+  if (min < 60) return `Il y a ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `Il y a ${h}h`;
+  const j = Math.floor(h / 24);
+  return `Il y a ${j}j`;
+};
+
+export default function CommandesRecues() {
   const navigate = useNavigate();
+  const { estPecheur } = useAuth();
+  const { mesCommandes, chargerMesCommandes } = useCommandes();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [filtre, setFiltre] = useState('toutes');
+  const [enCours, setEnCours] = useState(null); // id en cours de traitement
 
   useEffect(() => {
-    const loadData = async () => {
+    const load = async () => {
       try {
         if (!estPecheur()) {
           navigate('/connexion', { replace: true });
@@ -26,333 +45,313 @@ const CommandesRecues = () => {
         setLoading(false);
       }
     };
-    loadData();
+    load();
   }, [estPecheur, chargerMesCommandes, navigate]);
 
-  // Filtrer par statut
-  const [filtreStatut, setFiltreStatut] = useState('toutes'); // 'toutes', 'en_attente', 'en_cours', 'terminee', 'annulee'
-
-  const getFilteredCommandes = () => {
-    if (filtreStatut === 'toutes') {
-      return mesCommandes.liste
-        .sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
+  const commandes = useMemo(() => {
+    const liste = [...(mesCommandes.liste || [])].sort(
+      (a, b) => new Date(b.date_commande || b.date || b.created_at) -
+                new Date(a.date_commande || a.date || a.created_at)
+    );
+    if (filtre === 'recuperees') {
+      return liste.filter((c) =>
+        ['en_livraison', 'en_recherche_livreur', 'livree', 'payee'].includes(c.statut)
+      );
     }
-    return mesCommandes.liste
-      .filter(cmd => cmd.statut?.toLowerCase() === filtreStatut)
-      .sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
-  };
-
-  const commandes = getFilteredCommandes();
-
-  const getStatutLabel = (statut) => {
-    switch (statut?.toLowerCase()) {
-      case 'en_attente':
-        return { label: 'En attente', color: 'bg-amber-50 text-amber-700', icon: Clock };
-      case 'en_cours':
-        return { label: 'En cours', color: 'bg-blue-50 text-blue-700', icon: AlertTriangle };
-      case 'terminee':
-        return { label: 'Terminée', color: 'bg-emerald-50 text-emerald-700', icon: CheckCircle2 };
-      case 'annulee':
-        return { label: 'Annulée', color: 'bg-red-50 text-red-700', icon: XCircle };
-      default:
-        return { label: statut || 'Inconnu', color: 'bg-slate-50 text-slate-700', icon: AlertTriangle };
+    if (filtre === 'en_attente_paiement') {
+      return liste.filter((c) => c.statut === 'en_attente_paiement');
     }
-  };
+    return liste;
+  }, [mesCommandes.liste, filtre]);
 
-  const handleChangerStatut = async (commandeId, nouveauStatut) => {
+  const compteurs = useMemo(() => {
+    const liste = mesCommandes.liste || [];
+    return {
+      toutes: liste.length,
+      recuperees: liste.filter((c) =>
+        ['en_livraison', 'en_recherche_livreur', 'livree', 'payee'].includes(c.statut)
+      ).length,
+      en_attente_paiement: liste.filter((c) => c.statut === 'en_attente_paiement').length,
+    };
+  }, [mesCommandes.liste]);
+
+  // ---------- Actions ----------
+  const handleAccepter = async (cmd) => {
+    setEnCours(cmd.id);
     try {
-      const result = await mettreAJourStatutCommande(commandeId, nouveauStatut);
-      if (result.success) {
-        await chargerMesCommandes();
-      }
+      await CommandeService.confirmerCommande(cmd.id);
+      await chargerMesCommandes();
     } catch (err) {
-      console.error('Erreur de mise à jour:', err);
-      setError('Impossible de mettre à jour la commande');
+      console.error('Erreur confirmation:', err);
+      alert(err.response?.data?.erreur || 'Impossible de confirmer cette commande.');
+    } finally {
+      setEnCours(null);
     }
   };
 
-  const getMontantTotal = (commande) => {
-    const prix = commande.produit?.prix || 0;
-    const quantite = commande.quantite || 0;
-    return prix * quantite;
+  const handleRefuser = async (cmd) => {
+    if (!window.confirm('Refuser cette commande ?')) return;
+    setEnCours(cmd.id);
+    try {
+      await CommandeService.refuserCommande(cmd.id);
+      await chargerMesCommandes();
+    } catch (err) {
+      console.error('Erreur refus:', err);
+      alert(err.response?.data?.erreur || 'Impossible de refuser cette commande.');
+    } finally {
+      setEnCours(null);
+    }
   };
 
-  // Calculer le total des ventes
-  const totalVentes = commandes
-    .filter(cmd => cmd.statut?.toLowerCase() === 'terminee')
-    .reduce((sum, cmd) => sum + getMontantTotal(cmd), 0);
+  const handleAppeler = (tel) => {
+    if (tel) window.location.href = `tel:${tel}`;
+  };
 
-  if (!estPecheur()) {
-    return null;
-  }
+  // ---------- Helpers ----------
+  const getStatutBadge = (statut) => {
+    switch (statut) {
+      case 'en_attente_pecheur':
+        return { label: 'NOUVELLE COMMANDE', bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' };
+      case 'en_attente_paiement':
+        return { label: 'EN ATTENTE PAIEMENT', bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-500' };
+      case 'payee':
+        return { label: 'PAYÉE', bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' };
+      case 'en_recherche_livreur':
+        return { label: 'EN RECHERCHE LIVREUR', bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-500' };
+      case 'en_livraison':
+        return { label: 'EN LIVRAISON', bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-500' };
+      case 'livree':
+        return { label: 'LIVRÉE', bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' };
+      case 'refusee':
+        return { label: 'REFUSÉE', bg: 'bg-rose-50', text: 'text-rose-700', dot: 'bg-rose-500' };
+      case 'annulee':
+        return { label: 'ANNULÉE', bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' };
+      default:
+        return { label: statut || 'INCONNU', bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' };
+    }
+  };
+
+  const totalCommande = (cmd) =>
+    (cmd.lignes || []).reduce(
+      (sum, l) => sum + Number(l.prix_unitaire || 0) * Number(l.quantite || 0),
+      0
+    );
+
+  const quantiteTotale = (cmd) =>
+    (cmd.lignes || []).reduce((sum, l) => sum + Number(l.quantite || 0), 0);
+
+  if (!estPecheur()) return null;
 
   return (
-    <div className="min-h-screen bg-[#F7F4EF] text-slate-800 font-sans pb-28 max-w-md mx-auto shadow-2xl relative">
-      {/* Header */}
-      <header className="p-5 flex items-center justify-between">
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2.5 rounded-full bg-white shadow-sm border border-slate-200/80"
-        >
-          <ChevronLeft size={18} className="text-slate-600" />
-        </button>
-        
-        <div className="text-center">
-          <h1 className="text-lg font-bold text-slate-900">Commandes reçues</h1>
-          <p className="text-xs text-slate-500">Gérer vos demandes clients</p>
-        </div>
+    <div className="min-h-screen bg-stone-300 font-sans antialiased sm:flex sm:items-center sm:justify-center sm:py-6">
+      <div className="relative flex h-screen w-full max-w-md flex-col overflow-hidden bg-[#FAF6F0] sm:h-[880px] sm:max-h-[92vh] sm:rounded-[40px] sm:border-8 sm:border-stone-300 sm:shadow-2xl">
 
-        <button
-          onClick={() => navigate('/pecheur/accueil')}
-          className="p-2.5 rounded-full bg-primary text-white shadow-sm shadow-primary/25"
-        >
-          <Package size={18} />
-        </button>
-      </header>
-
-      {/* Résumé */}
-      <div className="px-5 mb-4">
-        <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-4 text-white shadow-lg shadow-orange-500/25">
-          <div className="flex justify-between items-center mb-2">
-            <div>
-              <p className="text-xs opacity-80">Total des ventes</p>
-              <p className="text-2xl font-bold">{totalVentes.toLocaleString()} FCFA</p>
-            </div>
-            <div className="w-12 h-12 bg-white/20 rounded-xl d-flex align-center justify-center">
-              <Package size={24} />
-            </div>
-          </div>
-          <p className="text-xs opacity-80">
-            {commandes.filter(cmd => cmd.statut?.toLowerCase() === 'terminee').length} commandes terminées
-          </p>
-        </div>
-      </div>
-
-      {/* Filtres */}
-      <div className="px-5 mb-4">
-        <div className="bg-white rounded-2xl p-2 shadow-sm border border-slate-200/60 flex gap-1 overflow-x-auto">
-          <button
-            onClick={() => setFiltreStatut('toutes')}
-            className={`flex-0 py-2 px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              filtreStatut === 'toutes' 
-                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25' 
-                : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            TOUTES
-          </button>
-          <button
-            onClick={() => setFiltreStatut('en_attente')}
-            className={`flex-0 py-2 px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              filtreStatut === 'en_attente' 
-                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25' 
-                : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            EN ATTENTE
-          </button>
-          <button
-            onClick={() => setFiltreStatut('en_cours')}
-            className={`flex-0 py-2 px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              filtreStatut === 'en_cours' 
-                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25' 
-                : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            EN COURS
-          </button>
-          <button
-            onClick={() => setFiltreStatut('terminee')}
-            className={`flex-0 py-2 px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              filtreStatut === 'terminee' 
-                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25' 
-                : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            TERMINÉES
-          </button>
-        </div>
-      </div>
-
-      {/* Liste des commandes */}
-      <main className="px-5 space-y-4 flex-1">
-        {loading ? (
-          <div className="flex-1 d-flex align-center justify-center">
-            <div className="text-center">
-              <p className="text-slate-500 text-sm">Chargement...</p>
-            </div>
-          </div>
-        ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-            <AlertTriangle size={20} className="text-red-500 mx-auto mb-2" />
-            <p className="text-red-700 text-sm">{error}</p>
-          </div>
-        ) : commandes.length === 0 ? (
-          <div className="bg-white rounded-3xl p-8 text-center shadow-sm border border-slate-200/60">
-            <div className="w-16 h-16 bg-slate-100 rounded-full d-flex align-center justify-center mx-auto mb-4">
-              <Package size={28} className="text-slate-400" />
-            </div>
-            <h3 className="font-bold text-slate-900 mb-2">Aucune commande reçue</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Publiez vos prises pour recevoir des commandes des acheteurs.
-            </p>
-            <button
-              onClick={() => navigate('/pecheur/publication/nouvelle')}
-              className="py-2 px-6 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-orange-500/25"
-            >
-              Publier maintenant
+        {/* HEADER */}
+        <header className="flex shrink-0 items-center justify-between px-5 pt-6 pb-3">
+          <h1 className="text-2xl font-extrabold text-[#0C3B4A]">Commandes</h1>
+          <div className="flex items-center gap-2">
+            <button className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-stone-700 shadow-sm">
+              <Search size={18} />
+            </button>
+            <button className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white text-stone-700 shadow-sm">
+              <Bell size={18} />
+              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#FF6B4A]" />
             </button>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {commandes.map((cmd) => {
-              const statutInfo = getStatutLabel(cmd.statut);
-              const StatutIcon = statutInfo.icon;
-              const montant = getMontantTotal(cmd);
+        </header>
 
-              return (
-                <div
-                  key={cmd.id}
-                  className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200/60"
-                >
-                  {/* En-tête avec statut */}
-                  <div className={`p-3 flex justify-between items-center ${statutInfo.color.replace('text-', '').replace('bg-', 'border-')}`}>
-                    <div className="flex items-center gap-2">
-                      <StatutIcon size={16} className={statutInfo.color.split(' ')[1]} />
-                      <span className={`text-xs font-bold ${statutInfo.color.split(' ')[1]}`}>
-                        {statutInfo.label}
+        {/* ONGLETS */}
+        <div className="no-scrollbar shrink-0 flex gap-2 overflow-x-auto px-5 pb-3">
+          {[
+            { id: 'toutes', label: 'Toutes', count: compteurs.toutes },
+            { id: 'recuperees', label: 'Récupérées', count: compteurs.recuperees },
+            { id: 'en_attente_paiement', label: 'En attente paiement', count: compteurs.en_attente_paiement },
+          ].map((tab) => {
+            const active = filtre === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setFiltre(tab.id)}
+                className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-bold shadow-sm transition ${
+                  active ? 'bg-[#0C3B4A] text-white' : 'bg-white text-slate-600 hover:bg-stone-100'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-black ${
+                  active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* LISTE */}
+        <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-24 pt-2">
+          {loading ? (
+            <div className="py-12 text-center text-sm text-stone-500">Chargement...</div>
+          ) : error ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-700">
+              {error}
+            </div>
+          ) : commandes.length === 0 ? (
+            <div className="mt-16 rounded-3xl border border-stone-100 bg-white p-8 text-center shadow-sm">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+                <Package size={28} className="text-slate-400" />
+              </div>
+              <h3 className="font-bold text-slate-900 mb-2">Aucune commande</h3>
+              <p className="text-xs text-slate-500">Publiez vos prises pour recevoir des commandes.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {commandes.map((cmd) => {
+                const badge = getStatutBadge(cmd.statut);
+                const acheteur = cmd.acheteur_detail || {};
+                const montant = totalCommande(cmd);
+                const qteTotale = quantiteTotale(cmd);
+                const dateRef = cmd.date_commande || cmd.date || cmd.created_at;
+                const estNouvelle = cmd.statut === 'en_attente_pecheur';
+                const enTraitement = enCours === cmd.id;
+                const lignes = cmd.lignes || [];
+
+                return (
+                  <article key={cmd.id} className="overflow-hidden rounded-3xl border border-stone-100 bg-white p-4 shadow-sm">
+
+                    {/* Header : badge + montant */}
+                    <div className="flex items-start justify-between">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${badge.bg} ${badge.text}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
+                        {badge.label}
                       </span>
+                      <div className="text-right">
+                        <p className="text-lg font-black text-[#FF6B4A] leading-tight">
+                          {formatPrice(montant)}
+                        </p>
+                        <p className="text-[10px] text-stone-400">{formatRelative(dateRef)}</p>
+                      </div>
                     </div>
-                    <span className="text-xs text-slate-500">
-                      #{cmd.id}
-                    </span>
-                  </div>
 
-                  {/* Contenu */}
-                  <div className="p-3 space-y-2">
-                    {/* Produit */}
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-slate-100 rounded-xl overflow-hidden flex-0">
-                        {cmd.produit?.media ? (
-                          <img
-                            src={cmd.produit.media}
-                            alt={cmd.produit.nom}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <Package size={20} className="text-slate-400 mx-auto my-2" />
+                    <div className="my-3 border-t border-stone-100" />
+
+                    {/* ✅ AFFICHER TOUTES LES LIGNES */}
+                    <div className="space-y-2">
+                      {lignes.length === 0 && (
+                        <p className="text-xs text-stone-400 italic">Détails indisponibles</p>
+                      )}
+                      {lignes.map((ligne, idx) => {
+                        const prod = ligne.produit_detail || {};
+                        return (
+                          <div key={ligne.id || idx} className="flex gap-3">
+                            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-stone-100">
+                              <img
+                                src={prod.media || 'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?w=200&auto=format&fit=crop&q=80'}
+                                alt={prod.nom || 'Produit'}
+                                className="h-full w-full object-cover"
+                                onError={(e) => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?w=200'; }}
+                              />
+                              <span className="absolute bottom-1 left-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                                {ligne.quantite} kg
+                              </span>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h4 className="truncate text-sm font-extrabold text-[#0C3B4A]">
+                                {prod.nom || 'Produit'}
+                              </h4>
+                              <p className="text-[10px] text-stone-400 mt-0.5">
+                                {formatPrice(ligne.prix_unitaire)} / kg
+                              </p>
+                              <p className="text-xs font-bold text-stone-700 mt-1">
+                                {formatPrice(Number(ligne.prix_unitaire) * Number(ligne.quantite))}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Infos client */}
+                    {acheteur.prenom || acheteur.nom || cmd.adresse_livraison ? (
+                      <div className="mt-3 rounded-2xl border border-stone-100 bg-stone-50 p-3 space-y-1">
+                        {(acheteur.prenom || acheteur.nom) && (
+                          <p className="flex items-center gap-1.5 text-[11px] text-stone-600">
+                            <User size={11} className="text-stone-400" />
+                            <span className="font-bold">
+                              {acheteur.prenom} {acheteur.nom}
+                            </span>
+                            {acheteur.telephone && (
+                              <span className="text-stone-400">• {acheteur.telephone}</span>
+                            )}
+                          </p>
+                        )}
+                        {cmd.adresse_livraison && (
+                          <p className="flex items-center gap-1.5 text-[11px] text-stone-500">
+                            <MapPin size={11} className="text-stone-400" />
+                            {cmd.adresse_livraison}
+                          </p>
                         )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-bold text-slate-900 text-ellipsis">
-                          {cmd.produit?.nom || 'Produit inconnu'}
-                        </h4>
-                        <p className="text-xs text-orange-500 font-bold">
-                          {cmd.produit?.prix || 0} FCFA/kg
-                        </p>
-                      </div>
+                    ) : null}
+
+                    {/* Total ligne */}
+                    <div className="mt-3 flex items-center justify-between border-t border-stone-100 pt-3">
+                      <span className="text-[11px] text-stone-400">
+                        {lignes.length} produit{lignes.length > 1 ? 's' : ''} • {qteTotale} kg
+                      </span>
+                      <span className="text-sm font-black text-[#0F2A4A]">
+                        {formatPrice(montant)}
+                      </span>
                     </div>
 
-                    {/* Détails de la commande */}
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="flex items-center gap-1 text-slate-500">
-                        <MapPin size={12} />
-                        <span className="text-ellipsis">{cmd.produit?.adresse || 'Localisation inconnue'}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-slate-500">Quantité:</span>
-                        <span className="font-bold text-slate-800"> {cmd.quantite} kg</span>
-                      </div>
-                    </div>
-
-                    {/* Client */}
-                    {cmd.acheteur && (
-                      <div className="pt-2 border-t border-slate-100">
-                        <p className="text-xs text-slate-500">
-                          <span className="font-medium">Client:</span> {cmd.acheteur.prenom} {cmd.acheteur.nom}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          <span className="font-medium">Téléphone:</span> {cmd.acheteur.telephone}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Total */}
-                    <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
-                      <p className="text-xs text-slate-500">Date de commande:</p>
-                      <p className="text-sm font-bold text-orange-500">
-                        {montant.toLocaleString()} FCFA
-                      </p>
-                    </div>
-                    <p className="text-[9px] text-slate-400">
-                      {new Date(cmd.date || cmd.created_at).toLocaleDateString('fr-FR')} à {new Date(cmd.date || cmd.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-
-                  {/* Actions */}
-                  {cmd.statut?.toLowerCase() === 'en_attente' && (
-                    <div className="p-2 border-t border-slate-100 flex gap-2 bg-slate-50">
+                    {/* Actions */}
+                    <div className="mt-3 flex items-center gap-2">
                       <button
-                        onClick={() => handleChangerStatut(cmd.id, 'en_cours')}
-                        className="flex-1 py-2 px-3 bg-emerald-500 text-white text-xs font-bold rounded-xl hover:bg-emerald-600 transition-colors"
+                        onClick={() => handleAppeler(acheteur.telephone)}
+                        disabled={!acheteur.telephone}
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-[#0C3B4A] transition hover:bg-slate-200 disabled:opacity-40"
                       >
-                        <CheckCircle2 size={14} className="inline mr-1" />
-                        Accepter
+                        <Phone size={16} />
                       </button>
-                      <button
-                        onClick={() => handleChangerStatut(cmd.id, 'annulee')}
-                        className="py-2 px-3 bg-red-500 text-white text-xs font-bold rounded-xl hover:bg-red-600 transition-colors"
-                      >
-                        <XCircle size={14} />
-                      </button>
-                    </div>
-                  )}
-                  
-                  {cmd.statut?.toLowerCase() === 'en_cours' && (
-                    <div className="p-2 border-t border-slate-100 flex gap-2 bg-slate-50">
-                      <button
-                        onClick={() => handleChangerStatut(cmd.id, 'terminee')}
-                        className="flex-1 py-2 px-3 bg-emerald-500 text-white text-xs font-bold rounded-xl hover:bg-emerald-600 transition-colors"
-                      >
-                        <CheckCircle2 size={14} className="inline mr-1" />
-                        Marquer terminée
-                      </button>
-                      <button
-                        onClick={() => handleChangerStatut(cmd.id, 'annulee')}
-                        className="py-2 px-3 bg-amber-500 text-white text-xs font-bold rounded-xl hover:bg-amber-600 transition-colors"
-                      >
-                        <XCircle size={14} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </main>
 
-      {/* Navigation Bottom */}
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200/80 px-6 py-3 flex justify-between items-center text-slate-400">
-        <button onClick={() => navigate('/pecheur/accueil')} className="flex flex-col items-center gap-1 hover:text-orange-500">
-          <Package size={18} />
-          <span className="text-[9px]">Publications</span>
-        </button>
-        <button onClick={() => navigate('/pecheur/commandes')} className="flex flex-col items-center gap-1 text-orange-500 font-bold">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-2.5 5M7 13l2.5 5m6-5v6a2 2 0 11-4 0v-6m4 0V9a2 2 0 10-4 0v4.01" />
-          </svg>
-          <span className="text-[9px]">Commandes</span>
-        </button>
-        <button onClick={() => navigate('/pecheur/ventes')} className="flex flex-col items-center gap-1 hover:text-orange-500">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span className="text-[9px]">Ventes</span>
-        </button>
-      </nav>
+                      {estNouvelle && (
+                        <>
+                          <button
+                            onClick={() => handleRefuser(cmd)}
+                            disabled={enTraitement}
+                            className="flex-1 rounded-2xl bg-rose-50 px-4 py-3 text-xs font-bold text-rose-600 transition hover:bg-rose-100 disabled:opacity-60"
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            onClick={() => handleAccepter(cmd)}
+                            disabled={enTraitement}
+                            className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-[#0A8A5F] px-4 py-3 text-xs font-bold text-white shadow-sm transition hover:bg-[#0C7A54] disabled:opacity-60"
+                          >
+                            <Check size={14} />
+                            {enTraitement ? 'En cours...' : 'Accepter'}
+                          </button>
+                        </>
+                      )}
+
+                      {cmd.statut === 'en_attente_paiement' && (
+                        <div className="flex-1 rounded-2xl bg-orange-50 px-4 py-3 text-center text-xs font-bold text-orange-700">
+                          En attente du paiement client
+                        </div>
+                      )}
+
+                      {['payee', 'en_recherche_livreur'].includes(cmd.statut) && (
+                        <div className="flex-1 rounded-2xl bg-emerald-50 px-4 py-3 text-center text-xs font-bold text-emerald-700">
+                          Prêt à être remis au livreur
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
-};
-
-export default CommandesRecues;
+}

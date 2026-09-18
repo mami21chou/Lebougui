@@ -89,6 +89,6 @@ class InformationSerializer(serializers.ModelSerializer):
         model = Information
         fields = [
             "id", "pecheur", "pecheur_nom", "pecheur_prenom",
-            "date_publication", "audio", "adresse",
+            "date_publication", "audio", "adresse","texte_transcrit",
             "latitude", "longitude", "description", "statut_moderation",
         ]
