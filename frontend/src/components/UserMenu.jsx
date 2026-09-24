@@ -86,14 +86,15 @@ export default function UserMenu({
           <div className="p-2">
             <button
               onClick={() => {
-                setOpen(false);
-                navigate('/profil');
-              }}
+              navigate('/profil');
+              closeMenu();
+            }}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-700 hover:bg-slate-50 transition text-sm"
             >
               <User size={16} className="text-slate-500" />
               <span>Mon profil</span>
             </button>
+
 
             <button
               onClick={() => {

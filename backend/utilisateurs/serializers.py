@@ -4,13 +4,102 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from .models import Utilisateur, ProfilPecheur, ProfilLivreur, Vehicule, Premium
 from rest_framework import serializers
+from django.utils import timezone
+from datetime import timedelta
+from commandes.models import Note
 
 
-class UtilisateurSerializer(ModelSerializer):
+
+
+class ProfilPecheurSerializer(serializers.ModelSerializer):
     class Meta:
-        model=Utilisateur
-        fields=['id','telephone','email', 'nom', 'prenom', 'adresse', 'role','date_inscription']
+        model = ProfilPecheur
+        fields = ["est_verifie", "documents_pecheur"]
 
+
+class VehiculeSerializer(serializers.ModelSerializer):
+    type_vehicule_display = serializers.CharField(
+        source="get_type_vehicule_display",
+        read_only=True,
+    )
+
+    class Meta:
+        model = Vehicule
+        fields = [
+            "id",
+            "type_vehicule",
+            "type_vehicule_display",
+            "immatriculation",
+            "est_frigorifie",
+        ]
+
+
+class ProfilLivreurSerializer(serializers.ModelSerializer):
+    vehicule = VehiculeSerializer(read_only=True)
+
+    class Meta:
+        model = ProfilLivreur
+        fields = [
+            "est_verifie",
+            "disponible",
+            "document_verification",
+            "vehicule",
+        ]
+
+
+
+class PremiumSerializer(serializers.ModelSerializer):
+    fonction_display = serializers.CharField(
+        source="get_fonction_display", read_only=True
+    )
+    statut_display = serializers.CharField(
+        source="get_statut_display", read_only=True
+    )
+
+    class Meta:
+        model = Premium
+        fields = [
+            "id",
+            "fonction",
+            "fonction_display",
+            "statut",
+            "statut_display",
+            "date_obtention",
+            "date_expiration",
+            "validation_auto",
+            "motif_validation",
+            "duree_mois",
+        ]
+
+
+
+class UtilisateurSerializer(serializers.ModelSerializer):
+    profil_pecheur = ProfilPecheurSerializer(read_only=True)
+    profil_livreur = ProfilLivreurSerializer(read_only=True)
+    status_premium = PremiumSerializer(many=True, read_only=True)   
+    est_premium = serializers.SerializerMethodField()                
+
+
+    class Meta:
+        model = Utilisateur
+        fields = [
+            "id",
+            "telephone",
+            "email",
+            "nom",
+            "prenom",
+            "adresse",
+            "role",
+            "date_inscription",
+            "is_active",
+            "status_premium",   
+            "est_premium",      
+            "profil_pecheur",
+            "profil_livreur",
+        ]
+    def get_est_premium(self, obj):
+            """True si l'utilisateur a au moins un Premium actif."""
+            return obj.status_premium.filter(statut=Premium.Statut.ACTIF).exists()    
 
 
 class InscriptionSerializer(ModelSerializer):
@@ -121,3 +210,113 @@ class PremiumSouscriptionSerializer(serializers.ModelSerializer):
             defaults={"statut": Premium.Statut.EN_ATTENTE}
         )
         return premium    
+
+
+
+class PremiumSerializer(serializers.ModelSerializer):
+    """Serializer de LECTURE d'un Premium."""
+    fonction_display = serializers.CharField(
+        source="get_fonction_display", read_only=True
+    )
+    statut_display = serializers.CharField(
+        source="get_statut_display", read_only=True
+    )
+
+    class Meta:
+        model = Premium
+        fields = [
+            "id",
+            "fonction",
+            "fonction_display",
+            "statut",
+            "statut_display",
+            "date_obtention",
+            "date_expiration",
+            "validation_auto",
+            "motif_validation",
+            "duree_mois",
+        ]
+
+
+class PremiumSouscriptionSerializer(serializers.Serializer):
+    """
+    Souscription à un abonnement Premium.
+    Logique métier :
+    - Utilisateur SANS problème → validation AUTO (statut = actif immédiatement)
+    - Utilisateur AVEC 2+ signalements OU badge révoqué → validation MANUELLE (statut = en_attente)
+    """
+    fonction = serializers.ChoiceField(choices=Premium.Fonction.choices)
+    duree_mois = serializers.IntegerField(min_value=1, max_value=12, default=1)
+
+    def validate(self, attrs):
+        utilisateur = self.context["request"].user
+        fonction = attrs["fonction"]
+
+        # ─── Détection des problèmes ───
+        problemes = []
+
+        # 1. Signalements (notes ≤ 2 étoiles reçues)
+        nb_signalements = Note.objects.filter(
+            cible=utilisateur, etoile__lte=2
+        ).count()
+
+        if nb_signalements >= 2:
+            problemes.append(f"{nb_signalements} signalements")
+
+        # 2. Badge déjà révoqué précédemment pour la même fonction
+        a_badge_revoque = Premium.objects.filter(
+            utilisateur=utilisateur,
+            fonction=fonction,
+            statut=Premium.Statut.REVOQUE,
+        ).exists()
+
+        if a_badge_revoque:
+            problemes.append("badge révoqué précédemment")
+
+        # On stocke les infos pour le create()
+        attrs["_problemes"] = problemes
+        return attrs
+
+    def create(self, validated_data):
+        utilisateur = self.context["request"].user
+        fonction = validated_data["fonction"]
+        duree_mois = validated_data["duree_mois"]
+        problemes = validated_data.pop("_problemes", [])
+
+        # ─── On retire les anciens premiums de la même fonction ───
+        # (sauf ceux révoqués, on garde la trace)
+        Premium.objects.filter(
+            utilisateur=utilisateur,
+            fonction=fonction,
+            statut__in=[Premium.Statut.EN_ATTENTE, Premium.Statut.ACTIF],
+        ).delete()
+
+        # ─── Création du Premium ───
+        premium = Premium(
+            utilisateur=utilisateur,
+            fonction=fonction,
+            duree_mois=duree_mois,
+        )
+
+        if problemes:
+            #  VALIDATION MANUELLE
+            premium.statut = Premium.Statut.EN_ATTENTE
+            premium.validation_auto = False
+            premium.motif_validation = " / ".join(problemes)
+            premium.date_obtention = None
+            premium.date_expiration = None
+        else:
+            #  VALIDATION AUTOMATIQUE
+            premium.statut = Premium.Statut.ACTIF
+            premium.validation_auto = True
+            premium.motif_validation = "Validation automatique"
+            premium.date_obtention = timezone.now()
+            premium.date_expiration = timezone.now() + timedelta(days=30 * duree_mois)
+
+        premium.save()
+        return premium    
+
+
+
+
+

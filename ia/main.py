@@ -5,7 +5,7 @@ import tempfile
 import subprocess
 
 from analyseur.models import transcrire_audio, traduire_texte, classifier_image
-from analyseur.extraction import analyser_texte_produit
+from analyseur.extraction import analyser_texte_produit, extraire_zone
 
 app = FastAPI(title="Lebougui - Microservice IA")
 
@@ -86,6 +86,8 @@ async def analyser(audio: UploadFile = File(...), media: Optional[UploadFile] = 
         print(f">>>   prix_trouve      = {analyse['details']['prix_trouve']}")
         print(f">>>   prix_confiance   = {analyse['details']['prix_confiance']}")
         print(f">>>   quantite_trouvee = {analyse['details']['quantite_trouvee']}")
+        print(f">>>   zone_trouvee     = {analyse['details']['zone_trouvee']}")
+        print(f">>>   zone_confiance   = {analyse['details']['zone_confiance']}")
         print(f">>>   score_clip       = {analyse['details']['score_clip']}")
         print(f">>>   SCORE FINAL      = {score_final}")
         print(f">>>   SEUIL            = {SEUIL_CONFIANCE}")
@@ -103,15 +105,19 @@ async def analyser(audio: UploadFile = File(...), media: Optional[UploadFile] = 
                 "categorie": analyse["categorie"],
                 "prix":      analyse["prix"],
                 "quantite":  analyse["quantite"],
+                "adresse":   analyse.get("adresse"),   #  AJOUTÉ
             },
             "details": analyse["details"],
         }
 
     # ---------- 4. Cas INFORMATION (sans photo) ----------
+    zone, _zone_trouvee, _zone_confiance = extraire_zone(texte_transcrit, texte_traduit)
+
     score_confiance = 1.0 if len(texte_traduit.strip()) >= 5 else 0.3
     statut_auto = "visible" if score_confiance >= SEUIL_CONFIANCE else "en_attente"
 
     print(f">>> [INFO] score = {score_confiance} → {statut_auto.upper()}")
+    print(f">>> [INFO] zone  = {zone}")
     print("=" * 60)
 
     return {
@@ -120,5 +126,8 @@ async def analyser(audio: UploadFile = File(...), media: Optional[UploadFile] = 
         "texte_traduit": texte_traduit,
         "score_confiance": score_confiance,
         "statut_auto": statut_auto,
-        "suggestion": {"description": texte_traduit},
+        "suggestion": {
+            "description": texte_traduit,
+            "adresse":     zone,   #  AJOUTÉ
+        },
     }

@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Package, Truck, CheckCircle, XCircle, Clock, MapPin, Phone,
-  Search, Store, Bell, Star,
+  Package, Truck, CheckCircle, MapPin, Phone,
 } from 'lucide-react';
 import { useCommandes } from '../../context/CommandeContext';
 import { useAuth } from '../../context/AuthContext';
-import UserMenu from '../../components/UserMenu';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import AcheteurHeader from '../../components/AcheteurHeader';
+import AcheteurBottomNav from '../../components/AcheteurBottomNav';
+import useCartCount from '../../hooks/useCartCount';
+
+const fallbackImage = '/images/fallback.png';
 
 const formatPrice = (p) =>
   `${new Intl.NumberFormat('fr-FR').format(Number(p) || 0)} FCFA`;
@@ -41,9 +44,7 @@ const EN_COURS_STATUTS = [
   'en_recherche_livreur',
   'en_livraison',
 ];
-// Livrées : uniquement les livrées
 const LIVREE_STATUTS = ['livree'];
-// Historique : tout ce qui est terminé (livrées + annulées + refusées)
 const HISTORIQUE_STATUTS = ['livree', 'annulee', 'refusee'];
 
 // ============================================
@@ -105,9 +106,10 @@ const getStatutCouleur = (statut) => {
 export default function MesCommandes() {
   const navigate = useNavigate();
   const { mesCommandes, chargerMesCommandes } = useCommandes();
-  const { estAuthentifie, utilisateur } = useAuth();
+  const { estAuthentifie } = useAuth();
+  const cartCount = useCartCount();
 
-  const [filtreStatut, setFiltreStatut] = useState('en_cours'); // 'en_cours' | 'livrees' | 'historique'
+  const [filtreStatut, setFiltreStatut] = useState('en_cours');
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -122,7 +124,6 @@ export default function MesCommandes() {
 
   const toutesCommandes = mesCommandes.liste || [];
 
-  // Commandes filtrées
   const commandes = useMemo(() => {
     const sorted = [...toutesCommandes].sort(
       (a, b) =>
@@ -168,49 +169,13 @@ export default function MesCommandes() {
     <div className="min-h-screen bg-stone-300 font-sans antialiased sm:flex sm:items-center sm:justify-center sm:py-6">
       <div className="relative flex h-screen w-full max-w-md flex-col overflow-hidden bg-[#FAF6F0] sm:h-[880px] sm:max-h-[92vh] sm:rounded-[40px] sm:border-8 sm:border-stone-300 sm:shadow-2xl">
 
-        {/* HEADER */}
-        <header className="flex items-center justify-between px-5 pt-6 pb-3 shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <UserMenu
-              photo={utilisateur?.photo}
-              prenom={utilisateur?.prenom}
-              nom={utilisateur?.nom}
-              role="Acheteur"
-              showName={false}
-            />
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h1 className="text-base font-extrabold leading-tight text-stone-900 truncate">
-                  {utilisateur?.prenom ? `Chez ${utilisateur.prenom}` : 'Mes commandes'}
-                </h1>
-                {utilisateur?.status_premium?.statut === 'actif' && (
-                  <span className="rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-cyan-800">
-                    PRO
-                  </span>
-                )}
-              </div>
-              <p className="flex items-center gap-1 text-[11px] font-medium text-stone-500">
-                <MapPin size={12} className="text-stone-400" /> Dakar · Plateau
-              </p>
-            </div>
-          </div>
-          <button
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-stone-700 shadow-sm"
-            aria-label="Rechercher"
-          >
-            <Search size={18} />
-          </button>
-        </header>
-
-        {/* TITRE */}
-        <div className="px-5 mb-3 shrink-0">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-2xl font-black text-[#0F2A4A]">Mes Commandes</h2>
-            <span className="text-xs font-medium text-stone-500">
-              {toutesCommandes.length} commande{toutesCommandes.length > 1 ? 's' : ''} au total
-            </span>
-          </div>
-        </div>
+        {/* HEADER HÉRITÉ */}
+        <AcheteurHeader
+          title="Mes Commandes"
+          subtitle={`${toutesCommandes.length} commande${toutesCommandes.length > 1 ? 's' : ''} au total`}
+          cartCount={cartCount}
+          showSearch={false}
+        />
 
         {/* ONGLETS */}
         <div className="no-scrollbar shrink-0 flex gap-2 overflow-x-auto px-5 pb-3">
@@ -304,16 +269,12 @@ export default function MesCommandes() {
                   <div className="flex gap-3 px-4 pt-3 pb-4">
                     <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-stone-100">
                       <img
-                        src={
-                          prod.media ||
-                          'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?w=200&auto=format&fit=crop&q=80'
-                        }
+                        src={prod.media || fallbackImage}
                         alt={prod.nom || 'Produit'}
                         className="h-full w-full object-cover"
                         onError={(e) => {
                           e.target.onerror = null;
-                          e.target.src =
-                            'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?w=200';
+                          e.target.src = fallbackImage;
                         }}
                       />
                     </div>
@@ -338,8 +299,8 @@ export default function MesCommandes() {
                     </div>
                   </div>
 
-                  {/* Carte pêcheur */}
-                  {pecheurNom && (
+                  {/* Carte pêcheur — UNIQUEMENT dans l'onglet "En cours" */}
+                  {filtreStatut === 'en_cours' && pecheurNom && (
                     <div className="mx-4 mb-3 flex items-center justify-between rounded-2xl bg-[#F7F4EF] px-3 py-2.5">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0C3B4A] text-white text-xs font-bold">
@@ -483,7 +444,7 @@ export default function MesCommandes() {
                         onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
                         className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white transition hover:bg-emerald-700"
                       >
-                        Noter le pêcheur
+                        Note
                       </button>
                     </div>
                   )}
@@ -516,40 +477,8 @@ export default function MesCommandes() {
           )}
         </main>
 
-        {/* BOTTOM NAV */}
-        <nav className="absolute bottom-3 left-4 right-4 z-30 flex items-center justify-between rounded-full border border-stone-200/60 bg-white/95 px-5 py-2.5 shadow-xl backdrop-blur-md">
-          <button
-            onClick={() => navigate('/acheteur/accueil')}
-            className="flex flex-col items-center gap-0.5 font-medium text-stone-400 hover:text-stone-700 transition"
-          >
-            <Store size={19} />
-            <span className="text-[10px]">Marché</span>
-          </button>
-
-          <button
-            onClick={() => navigate('/acheteur/commandes')}
-            className="flex flex-col items-center gap-0.5 font-extrabold text-[#0C3B4A] transition"
-          >
-            <Package size={19} />
-            <span className="text-[10px]">Commandes</span>
-          </button>
-
-          <button
-            onClick={() => navigate('/acheteur/alertes')}
-            className="flex flex-col items-center gap-0.5 font-medium text-stone-400 hover:text-stone-700 transition"
-          >
-            <Bell size={19} />
-            <span className="text-[10px]">Alertes</span>
-          </button>
-
-          <button
-            onClick={() => navigate('/acheteur/premium')}
-            className="flex flex-col items-center gap-0.5 font-medium text-stone-400 hover:text-stone-700 transition"
-          >
-            <Star size={19} />
-            <span className="text-[10px]">Premium</span>
-          </button>
-        </nav>
+        {/* BOTTOM NAV HÉRITÉ */}
+        <AcheteurBottomNav />
       </div>
     </div>
   );

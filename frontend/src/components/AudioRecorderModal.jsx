@@ -152,7 +152,7 @@ export default function AudioRecorderModal({ onAudioCaptured, onCancel, onFinish
           <X size={18} className="text-slate-600" />
         </button>
       </div>
-
+{/* 
       <div className="flex justify-center">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-slate-200 text-xs font-semibold text-slate-700 shadow-sm">
           <span
@@ -160,9 +160,9 @@ export default function AudioRecorderModal({ onAudioCaptured, onCancel, onFinish
               isRecording ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
             }`}
           ></span>
-          {isRecording ? 'Micro actif • Réduction de bruit' : 'Micro en pause'}
+          {isRecording ? 'Micro actif Réduction de bruit' : 'Micro en pause'}
         </div>
-      </div>
+      </div> */}
 
       <div className="flex flex-col items-center justify-center space-y-6 my-auto">
         <button

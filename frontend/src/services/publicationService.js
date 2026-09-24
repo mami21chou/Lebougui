@@ -74,7 +74,7 @@ export const PublicationService = {
 
     return response.data;
   },
-  
+
   async publier(audioBlob, mediaFile) {
     const formData = new FormData();
     formData.append('audio', audioBlob, 'vocal_wolof.webm');
@@ -87,5 +87,11 @@ export const PublicationService = {
     });
     return response.data;
   },
-};
 
+  // 7. Le pêcheur active / désactive la disponibilité de son produit
+  //    statut : 'disponible' | 'rupture'
+  async changerStatutProduit(id, statut) {
+    const response = await API.patch(`/publications/produits/${id}/statut/`, { statut });
+    return response.data;
+  },
+};

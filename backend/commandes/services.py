@@ -35,21 +35,33 @@ def calculer_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> 
     return round(R * c, 2)
 
 
+# def calculer_frais_livraison(distance_km: float) -> float:
+#     """
+#     Barème progressif des frais de livraison :
+#     - 0 à 5 km   : 1 000 FCFA (tarif forfaitaire de base)
+#     - 5 à 15 km  : 1 000 FCFA + 150 FCFA par km supplémentaire
+#     - > 15 km    : 2 500 FCFA + 100 FCFA par km supplémentaire
+#     """
+#     distance_km = float(distance_km)
+
+#     if distance_km <= 5:
+#         return 1000.0
+#     elif distance_km <= 15:
+#         return 1000.0 + (distance_km - 5) * 150.0
+#     else:
+#         return 2500.0 + (distance_km - 15) * 100.0
+
+
+
 def calculer_frais_livraison(distance_km: float) -> float:
     """
-    Barème progressif des frais de livraison :
-    - 0 à 5 km   : 1 000 FCFA (tarif forfaitaire de base)
-    - 5 à 15 km  : 1 000 FCFA + 150 FCFA par km supplémentaire
-    - > 15 km    : 2 500 FCFA + 100 FCFA par km supplémentaire
+    Barème : 500 FCFA pour les 2 premiers km, puis 250 FCFA par km sup.
+    Ex: 2 km → 500, 5 km → 1250, 10 km → 2500
     """
     distance_km = float(distance_km)
-
-    if distance_km <= 5:
-        return 1000.0
-    elif distance_km <= 15:
-        return 1000.0 + (distance_km - 5) * 150.0
-    else:
-        return 2500.0 + (distance_km - 15) * 100.0
+    if distance_km <= 2:
+        return 500.0
+    return round(500.0 + (distance_km - 2) * 250.0, 2)    
 
 
 def envoyer_webhook_n8n(evenement: str, payload: dict) -> None:

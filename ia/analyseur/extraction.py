@@ -3,7 +3,7 @@ analyseur/extraction.py
 
 Extrait, depuis le WOLOF (priorité) et le FRANÇAIS (secours), les
 informations nécessaires pour pré-remplir une publication :
-espèce (-> nom + catégorie), quantité (kg), prix (FCFA).
+espèce (-> nom + catégorie), quantité (kg), prix (FCFA), zone de pêche.
 
 Principe : pas besoin d'être parfait. Si une info manque, le score de
 confiance baisse, et la publication part en modération admin
@@ -12,6 +12,7 @@ confiance baisse, et la publication part en modération admin
 
 import re
 import difflib
+import unicodedata
 
 # ============================================================
 # Dictionnaire d'espèces : WOLOF + FRANÇAIS -> (nom affiché, catégorie)
@@ -33,7 +34,7 @@ ESPECES = {
     "langust":  ("Langouste",  "fruit_de_mer"),
     "calmar":   ("Calmar",     "fruit_de_mer"),
 
-    # --- Variantes phonétiques (au cas où) ---
+    # --- Variantes phonétiques ---
     "tiof":     ("Thiof",      "poisson"),
     "tioff":    ("Thiof",      "poisson"),
     "waxandé":  ("Sole",       "poisson"),
@@ -67,33 +68,160 @@ SEUIL_RESSEMBLANCE = 0.75
 
 
 # ============================================================
+# ZONES DE PÊCHE DU SÉNÉGAL
+# nom affiché -> variantes (noms wolof / orthographes que l'ASR peut produire)
+# À COMPLÉTER avec ce que Kiriku écrit réellement (voir les logs [ASR]).
+# Les accents, tirets et majuscules sont ignorés à la comparaison.
+# ============================================================
+ZONES = {
+    "Saint-Louis": ["saint louis", "ndar", "sanlui", "san louis"],
+    "Kayar": ["kayar", "kayaar"],
+    "Fass Boye": ["fass boye", "fass boy", "fas boye"],
+    "Mboro": ["mboro"],
+    "Lompoul": ["lompoul"],
+    "Yoff": ["yoff", "yoof"],
+    "Ngor": ["ngor", "noor"],
+    "Ouakam": ["ouakam", "wakam"],
+    "Soumbédioune": ["soumbedioune", "sumbejun", "soumbejoune"],
+    "Hann": ["hann"],
+    "Thiaroye": ["thiaroye", "tiaroye", "caaroy"],
+    "Mbao": ["mbao"],
+    "Rufisque": ["rufisque", "rufisk", "ruufisk"],
+    "Bargny": ["bargny", "bargni"],
+    "Yène": ["yene"],
+    "Toubab Dialaw": ["toubab dialaw", "tubab jalaw", "toubab dialao"],
+    "Popenguine": ["popenguine", "popenguin"],
+    "Guéréo": ["guereo", "guereo"],
+    "Somone": ["somone"],
+    "Ngaparou": ["ngaparou"],
+    "Mbour": ["mbour", "mbuur"],
+    "Nianing": ["nianing"],
+    "Pointe-Sarène": ["pointe sarene", "point sarene", "sarene"],
+    "Joal": ["joal", "jowaal", "joal fadiouth", "zool", "zool faajoot", "joal faajoot"],
+    "Djiffer": ["djiffer", "jiffer"],
+    "Dionewar": ["dionewar"],
+    "Niodior": ["niodior"],
+    "Foundiougne": ["foundiougne", "fundiyun"],
+    "Missirah": ["missirah"],
+    "Sokone": ["sokone"],
+    "Toubacouta": ["toubacouta", "toubakouta"],
+    "Kafountine": ["kafountine", "kafuntin"],
+    "Diogué": ["diogue"],
+    "Cap Skirring": ["cap skirring", "kap skiring", "cap skiring"],
+    "Oussouye": ["oussouye"],
+    "Elinkine": ["elinkine"],
+    "Ziguinchor": ["ziguinchor", "sigicoor", "ziginchor"],
+    "Goudomp": ["goudomp"],
+    "Sédhiou": ["sedhiou", "sedhiou"],
+    "Bignona": ["bignona"],
+}
+
+def _normaliser(texte):
+    texte = texte.lower().replace("ŋ", "n")
+    texte = unicodedata.normalize("NFKD", texte)
+    texte = "".join(c for c in texte if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", " ", texte).strip()
+
+# variante normalisée -> nom affiché
+_VARIANTES = {}
+for _canon, _alias in ZONES.items():
+    for _v in [_canon] + _alias:
+        _VARIANTES[_normaliser(_v)] = _canon
+
+def _chercher_zone_dans(texte):
+    """
+    Passe 1 : le nom (ou un alias) apparaît comme MOT ENTIER -> 1.0
+    Passe 2 : groupes de 1 à 3 mots consécutifs, tolérance aux fautes -> 0.6
+    """
+    if not texte or not texte.strip():
+        return None
+    norm = _normaliser(texte)
+    if not norm:
+        return None
+    contexte = f" {norm} "
+    for variante in sorted(_VARIANTES, key=len, reverse=True):
+        if f" {variante} " in contexte:
+            return _VARIANTES[variante], 1.0
+    mots = norm.split()
+    candidats = [v for v in _VARIANTES if len(v) >= 6]
+    for taille in (3, 2, 1):
+        for i in range(len(mots) - taille + 1):
+            groupe = " ".join(mots[i:i + taille])
+            if len(groupe) < 5:
+                continue
+            proches = difflib.get_close_matches(groupe, candidats, n=1, cutoff=0.82)
+            if proches:
+                return _VARIANTES[proches[0]], 0.6
+    return None
+
+def extraire_zone(texte_transcrit: str, texte_traduit: str):
+    """
+    Cherche une zone de pêche (wolof d'abord, puis français).
+    Retourne (nom_zone, trouve, confiance) : 1.0 exacte, 0.6 approximative, 0.0 rien.
+    """
+    res = _chercher_zone_dans(texte_transcrit) or _chercher_zone_dans(texte_traduit)
+    if not res:
+        return None, False, 0.0
+    return res[0], True, res[1]
+
+
+# ============================================================
 # RECHERCHE D'ESPÈCE
 # ============================================================
 
+# Clés d'espèces normalisées (sans accents) -> (nom, catégorie)
+_ESPECES_NORM = {_normaliser(k): v for k, v in ESPECES.items()}
+_GENERIQUES = {"Poisson"}  # "jën" = poisson en général : on préfère une espèce précise
+
+
+def _mot_correspond(mot: str, cle: str) -> bool:
+    """
+    Le mot du texte correspond à la clé si c'est le même MOT
+    (ou la clé + un petit suffixe wolof/pluriel : thiofi, crevettes...).
+    Les clés courtes (sal, kel, sok...) ne matchent que le mot exact :
+    sinon "sal" se retrouve dans "salaamaalekum" -> Mulet.
+    """
+    if mot == cle:
+        return True
+    return len(cle) >= 5 and mot.startswith(cle) and len(mot) <= len(cle) + 2
+
+
 def _chercher_dans_texte(texte: str):
     """
-    2 passes :
-    1) Exacte (sous-chaîne).
-    2) Approximative (mot par mot, tolère les déformations).
-    Retourne (nom, categorie, trouve, methode) ou (None, None, False, None).
+    3 passes, toujours sur des MOTS ENTIERS (jamais des sous-chaînes) :
+    1) Exacte sur une espèce précise.
+    2) Approximative (déformations de l'ASR), mots de 4+ lettres seulement.
+    3) Exacte sur le mot générique ("jën" / "poisson").
     """
-    texte_minuscule = texte.lower()
-    mots_du_texte = re.findall(r"\w+", texte_minuscule)
+    if not texte or not texte.strip():
+        return None, None, False, None
 
-    # Passe 1 : exacte
-    for espece, (nom, categorie) in ESPECES.items():
-        if espece in texte_minuscule:
-            return nom, categorie, True, "exacte"
+    mots = _normaliser(texte).split()
+
+    # Passe 1 : exacte, espèce précise
+    for mot in mots:
+        for cle, (nom, categorie) in _ESPECES_NORM.items():
+            if nom not in _GENERIQUES and _mot_correspond(mot, cle):
+                return nom, categorie, True, "exacte"
 
     # Passe 2 : approximative
-    for mot in mots_du_texte:
+    cles_longues = [c for c, (n, _) in _ESPECES_NORM.items()
+                    if len(c) >= 4 and n not in _GENERIQUES]
+    for mot in mots:
+        if len(mot) < 4:
+            continue
         proches = difflib.get_close_matches(
-            mot, ESPECES.keys(), n=1, cutoff=SEUIL_RESSEMBLANCE
+            mot, cles_longues, n=1, cutoff=SEUIL_RESSEMBLANCE
         )
         if proches:
-            espece_trouvee = proches[0]
-            nom, categorie = ESPECES[espece_trouvee]
+            nom, categorie = _ESPECES_NORM[proches[0]]
             return nom, categorie, True, "approximative"
+
+    # Passe 3 : mot générique
+    for mot in mots:
+        for cle, (nom, categorie) in _ESPECES_NORM.items():
+            if nom in _GENERIQUES and _mot_correspond(mot, cle):
+                return nom, categorie, True, "generique"
 
     return None, None, False, None
 
@@ -101,17 +229,23 @@ def _chercher_dans_texte(texte: str):
 def extraire_espece(texte_transcrit: str, texte_traduit: str):
     """
     Cherche dans le WOLOF d'abord, puis dans le FRANÇAIS.
+    Si le wolof ne donne qu'un mot générique ("jën"), on regarde aussi le
+    français pour tenter de trouver une espèce précise.
     Retourne (nom, categorie, trouve, confiance).
-    confiance : 1.0 (exacte), 0.6 (approximative), 0.0 (rien trouvé).
     """
     nom, categorie, trouve, methode = _chercher_dans_texte(texte_transcrit)
+
     if not trouve:
         nom, categorie, trouve, methode = _chercher_dans_texte(texte_traduit)
+    elif methode == "generique":
+        n2, c2, t2, m2 = _chercher_dans_texte(texte_traduit)
+        if t2 and m2 != "generique":
+            nom, categorie, trouve, methode = n2, c2, t2, m2
 
     if not trouve:
         return None, None, False, 0.0
 
-    confiance = 1.0 if methode == "exacte" else 0.6
+    confiance = {"exacte": 1.0, "approximative": 0.6, "generique": 0.5}[methode]
     return nom, categorie, True, confiance
 
 
@@ -123,7 +257,7 @@ MOTIF_PRIX = re.compile(
     r"(\d[\d\s]{0,10}\d|\d)\s*(?:francs?|fcfa|f\b)",
     re.IGNORECASE,
 )
-MOTIF_NOMBRE_NU = re.compile(r"\b(\d{3,6})\b")
+MOTIF_NOMBRE_NU = re.compile(r"\b(\d{1,3}(?:\s\d{3})+|\d{3,6})\b")
 MOTIF_QUANTITE = re.compile(
     r"(\d+[.,]?\d*)\s*(?:kg|kilos?|kilogrammes?|kilo)\b",
     re.IGNORECASE,
@@ -150,8 +284,7 @@ def extraire_quantite(texte: str):
 def extraire_prix(texte: str, position_quantite=None):
     """
     1) Nombre + unité monétaire -> confiance 1.0
-    2) Nombre nu (en excluant la position déjà prise par la quantité)
-       -> confiance 0.6
+    2) Nombre nu -> confiance 0.6
     """
     m = MOTIF_PRIX.search(texte)
     if m:
@@ -194,6 +327,11 @@ def analyser_texte_produit(texte_transcrit: str, texte_traduit: str, score_clip:
     if not prix_trouve:
         prix, prix_trouve, confiance_prix = extraire_prix(texte_traduit, pos_q)
 
+    # 4) Zone de pêche
+    zone, zone_trouvee, confiance_zone = extraire_zone(
+        texte_transcrit, texte_traduit
+    )
+
     categorie_finale = categorie_texte
 
     poids = {
@@ -214,6 +352,7 @@ def analyser_texte_produit(texte_transcrit: str, texte_traduit: str, score_clip:
         "categorie": categorie_finale,
         "prix": prix,
         "quantite": quantite,
+        "adresse": zone,   # peut être None
         "score_confiance": round(score, 2),
         "details": {
             "espece_trouvee":   espece_trouvee,
@@ -221,6 +360,8 @@ def analyser_texte_produit(texte_transcrit: str, texte_traduit: str, score_clip:
             "prix_trouve":      prix_trouve,
             "prix_confiance":   confiance_prix,
             "quantite_trouvee": quantite_trouvee,
+            "zone_trouvee":     zone_trouvee,
+            "zone_confiance":   confiance_zone,
             "score_clip":       round(score_clip, 2),
         },
     }

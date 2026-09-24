@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Clock, Loader2, XCircle, ShoppingBag, Check, Smartphone } from 'lucide-react';
+import {
+  Clock, Loader2, XCircle, ShoppingBag, Check, Smartphone,
+  ArrowLeft, ShieldCheck,
+} from 'lucide-react';
 import { CommandeService } from '../../services/commandeService';
 
 const formatPrice = (p) =>
@@ -11,7 +14,7 @@ export default function AttenteConfirmation() {
   const { id } = useParams();
 
   const [commande, setCommande] = useState(null);
-  const [etape, setEtape] = useState('attente'); // 'attente' | 'paiement' | 'refusee' | 'erreur'
+  const [etape, setEtape] = useState('attente');
   const [erreur, setErreur] = useState('');
   const [moyenPaiement, setMoyenPaiement] = useState('wave');
   const [numeroTelephone, setNumeroTelephone] = useState('');
@@ -19,7 +22,6 @@ export default function AttenteConfirmation() {
   const [isPaying, setIsPaying] = useState(false);
   const pollRef = useRef(null);
 
-  // ---------- Polling toutes les 5s ----------
   useEffect(() => {
     if (!id) return;
 
@@ -45,7 +47,6 @@ export default function AttenteConfirmation() {
     return () => clearInterval(pollRef.current);
   }, [id, etape]);
 
-  // ---------- Paiement simulé ----------
   const handlePayer = async () => {
     setIsPaying(true);
     try {
@@ -59,43 +60,90 @@ export default function AttenteConfirmation() {
     }
   };
 
-  // ---------- Rendu REFUSÉE ----------
+  // ============================================================
+  // WRAPPER COMMUN
+  // ============================================================
+  const Wrapper = ({ children, footer = null }) => (
+    <div className="min-h-screen bg-stone-200 font-sans antialiased sm:flex sm:items-center sm:justify-center sm:py-6">
+      <div className="relative flex h-screen w-full max-w-md flex-col overflow-hidden bg-[#FAF6F0] sm:h-[880px] sm:max-h-[92vh] sm:rounded-[40px] sm:border-8 sm:border-stone-300 sm:shadow-2xl">
+        {children}
+        {footer}
+      </div>
+    </div>
+  );
+
+  const Header = ({ title }) => (
+    <header className="flex shrink-0 items-center gap-3 px-5 pb-4 pt-5">
+      <button
+        onClick={() => navigate(-1)}
+        aria-label="Retour"
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-stone-700 shadow-sm transition hover:bg-stone-50"
+      >
+        <ArrowLeft size={17} />
+      </button>
+      <h1 className="text-sm font-bold text-stone-900">{title}</h1>
+    </header>
+  );
+
+  // ============================================================
+  // REFUSÉE
+  // ============================================================
   if (etape === 'refusee') {
     return (
-      <div className="min-h-screen bg-[#FAF6F0] flex flex-col items-center justify-center p-6 max-w-md mx-auto text-center">
-        <XCircle size={64} className="text-rose-500 mb-4" />
-        <h2 className="text-xl font-black text-[#0F2A4A] mb-3">Commande refusée</h2>
-        <p className="text-sm text-slate-500 mb-6">
-          Le pêcheur n'a pas pu honorer votre commande.
-        </p>
-        <button
-          onClick={() => navigate('/acheteur/accueil')}
-          className="w-full py-4 bg-[#0F2A4A] text-white font-bold rounded-2xl"
-        >
-          Retour au marché
-        </button>
-      </div>
+      <Wrapper>
+        <main className="flex flex-1 flex-col items-center justify-center px-8 text-center">
+          <XCircle size={48} className="mb-5 text-stone-300" strokeWidth={1.5} />
+          <h2 className="mb-2 text-lg font-bold text-stone-900">
+            Commande refusée
+          </h2>
+          <p className="mb-8 max-w-xs text-sm leading-relaxed text-stone-500">
+            Le pêcheur n'a pas pu honorer votre commande. Vous ne serez pas débité.
+          </p>
+          <button
+            onClick={() => navigate('/acheteur/accueil')}
+            className="w-full rounded-2xl bg-[#0F2A4A] py-4 text-sm font-bold text-white transition active:scale-[0.98]"
+          >
+            Retour au marché
+          </button>
+        </main>
+      </Wrapper>
     );
   }
 
-  // ---------- Rendu ERREUR ----------
+  // ============================================================
+  // ERREUR
+  // ============================================================
   if (etape === 'erreur') {
     return (
-      <div className="min-h-screen bg-[#FAF6F0] flex flex-col items-center justify-center p-6 max-w-md mx-auto text-center">
-        <XCircle size={64} className="text-rose-500 mb-4" />
-        <h2 className="text-xl font-black text-[#0F2A4A] mb-3">Erreur</h2>
-        <p className="text-sm text-slate-500 mb-6">{erreur}</p>
-        <button
-          onClick={() => navigate('/acheteur/commandes')}
-          className="w-full py-4 bg-[#0F2A4A] text-white font-bold rounded-2xl"
-        >
-          Voir mes commandes
-        </button>
-      </div>
+      <Wrapper>
+        <main className="flex flex-1 flex-col items-center justify-center px-8 text-center">
+          <XCircle size={48} className="mb-5 text-stone-300" strokeWidth={1.5} />
+          <h2 className="mb-2 text-lg font-bold text-stone-900">
+            Paiement échoué
+          </h2>
+          <p className="mb-8 max-w-xs text-sm leading-relaxed text-stone-500">
+            {erreur}
+          </p>
+          <button
+            onClick={() => setEtape('paiement')}
+            className="mb-3 w-full rounded-2xl bg-[#0F2A4A] py-4 text-sm font-bold text-white transition active:scale-[0.98]"
+          >
+            Réessayer
+          </button>
+          <button
+            onClick={() => navigate('/acheteur/commandes')}
+            className="w-full py-3 text-xs font-bold text-stone-500 transition hover:text-stone-800"
+          >
+            Voir mes commandes
+          </button>
+        </main>
+      </Wrapper>
     );
   }
 
-  // ---------- Rendu PAIEMENT ----------
+  // ============================================================
+  // PAIEMENT
+  // ============================================================
   if (etape === 'paiement') {
     const total =
       (commande?.lignes || []).reduce(
@@ -103,229 +151,253 @@ export default function AttenteConfirmation() {
         0
       ) + Number(commande?.frais_livraison || 0);
 
-    return (
-      <div className="min-h-screen bg-[#FAF6F0] max-w-md mx-auto p-5 pb-24">
-        {/* Header */}
-        <div className="text-center mb-6">
-          <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-emerald-100 flex items-center justify-center">
-            <Check size={32} className="text-emerald-600" />
-          </div>
-          <h2 className="text-xl font-black text-[#0F2A4A]">Commande confirmée</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Le pêcheur a validé. Vous pouvez maintenant payer.
-          </p>
-        </div>
+    const moyens = [
+      {
+        id: 'wave',
+        label: 'Wave',
+        logo: '/images/wave.png',
+        fallback: 'W',
+      },
+      {
+        id: 'om',
+        label: 'Orange Money',
+        logo: '/images/OM.png',
+        fallback: 'OM',
+      },
+    ];
 
-        {/* Résumé commande */}
-        {commande?.lignes?.length > 0 && (
-          <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 mb-4">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">
-              Résumé de la commande
+    return (
+      <Wrapper
+        footer={
+          <footer className="shrink-0 border-t border-stone-100 bg-white px-5 py-4">
+            <button
+              onClick={handlePayer}
+              disabled={isPaying}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0F2A4A] py-4 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50"
+            >
+              {isPaying ? (
+                <>
+                  <Loader2 className="animate-spin" size={17} />
+                  Traitement...
+                </>
+              ) : (
+                <>
+                  <ShoppingBag size={17} />
+                  Payer {formatPrice(total)}
+                </>
+              )}
+            </button>
+          </footer>
+        }
+      >
+        <Header title="Paiement" />
+
+        <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6">
+
+          {/* Bandeau confirmation — sobre */}
+          <div className="mb-6 flex items-center gap-3 rounded-2xl bg-stone-100 px-4 py-3">
+            <Check size={18} className="shrink-0 text-stone-700" strokeWidth={2.5} />
+            <p className="text-xs font-medium leading-snug text-stone-700">
+              Le pêcheur a validé votre commande. Vous pouvez payer.
             </p>
-            <div className="space-y-2">
-              {commande.lignes.map((l, idx) => (
-                <div key={idx} className="flex justify-between text-xs">
-                  <span className="text-slate-600">
-                    {l.produit_detail?.nom || 'Produit'} × {l.quantite} kg
-                  </span>
-                  <span className="font-bold text-slate-800">
-                    {formatPrice(Number(l.prix_unitaire) * Number(l.quantite))}
-                  </span>
-                </div>
-              ))}
-            </div>
-            {Number(commande.frais_livraison) > 0 && (
-              <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between text-xs">
-                <span className="text-slate-600">Livraison</span>
-                <span className="font-bold text-slate-800">
-                  {formatPrice(commande.frais_livraison)}
-                </span>
+          </div>
+
+          {/* Détail commande — une seule carte unifiée */}
+          <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
+            <h2 className="mb-4 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+              Commande
+            </h2>
+
+            {commande?.lignes?.length > 0 ? (
+              <div className="space-y-3">
+                {commande.lignes.map((l, idx) => (
+                  <div key={idx} className="flex items-center justify-between gap-3 text-xs">
+                    <span className="min-w-0 flex-1 truncate text-stone-600">
+                      {l.produit_detail?.nom || 'Produit'}
+                      <span className="ml-1 text-stone-400">
+                        × {l.quantite} kg
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-semibold text-stone-800">
+                      {formatPrice(Number(l.prix_unitaire) * Number(l.quantite))}
+                    </span>
+                  </div>
+                ))}
+
+                {Number(commande.frais_livraison) > 0 && (
+                  <div className="flex items-center justify-between gap-3 border-t border-stone-100 pt-3 text-xs">
+                    <span className="text-stone-500">Livraison</span>
+                    <span className="font-semibold text-stone-800">
+                      {formatPrice(commande.frais_livraison)}
+                    </span>
+                  </div>
+                )}
               </div>
+            ) : (
+              <p className="text-xs italic text-stone-400">Chargement...</p>
             )}
-            <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">
-              <span className="text-sm font-bold text-slate-900">Total</span>
-              <span className="text-lg font-black text-[#FF6B4A]">
+
+            <div className="mt-5 flex items-baseline justify-between border-t border-stone-100 pt-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                Total
+              </span>
+              <span className="text-lg font-black text-stone-900">
                 {formatPrice(total)}
               </span>
             </div>
-          </div>
-        )}
+          </section>
 
-        {/* Moyen de paiement */}
-        <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 mb-4 space-y-3">
-          <h3 className="text-xs font-bold text-slate-900">Moyen de paiement</h3>
+          {/* Moyens de paiement — épuré */}
+          <section className="mb-6">
+            <h2 className="mb-3 px-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+              Paiement
+            </h2>
 
-          {/* WAVE */}
-          <div
-            onClick={() => setMoyenPaiement('wave')}
-            className={`flex items-center justify-between rounded-2xl p-3.5 cursor-pointer border transition ${
-              moyenPaiement === 'wave'
-                ? 'bg-[#E3F6F5] border-[#13B5EA]'
-                : 'bg-white border-slate-200'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#13B5EA] text-white font-black">
-                W
-              </div>
-              <div>
-                <span className="text-sm font-black text-slate-900 block">Wave</span>
-                <span className="text-[10px] text-slate-500">Paiement instantané</span>
-              </div>
-            </div>
-            <div
-              className={`flex h-5 w-5 items-center justify-center rounded-full border ${
-                moyenPaiement === 'wave'
-                  ? 'bg-[#004D40] border-[#004D40] text-white'
-                  : 'border-slate-300'
-              }`}
-            >
-              {moyenPaiement === 'wave' && <Check size={12} strokeWidth={3} />}
-            </div>
-          </div>
+            <div className="space-y-2">
+              {moyens.map((m) => {
+                const actif = moyenPaiement === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setMoyenPaiement(m.id)}
+                    className={`flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left transition ${
+                      actif
+                        ? 'border-[#0F2A4A] shadow-sm'
+                        : 'border-stone-200 hover:border-stone-300'
+                    }`}
+                  >
+                    {/* Logo */}
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-stone-50">
+                      <img
+                        src={m.logo}
+                        alt={m.label}
+                        className="h-7 w-7 object-contain"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.style.display = 'none';
+                          e.target.parentElement.innerHTML = `<span class="text-[11px] font-black text-stone-700">${m.fallback}</span>`;
+                        }}
+                      />
+                    </div>
 
-          {/* ORANGE MONEY */}
-          <div
-            onClick={() => setMoyenPaiement('om')}
-            className={`flex items-center justify-between rounded-2xl p-3.5 cursor-pointer border transition ${
-              moyenPaiement === 'om'
-                ? 'bg-[#FFF3E0] border-[#FF6600]'
-                : 'bg-white border-slate-200'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FF6600] text-white font-black text-xs">
-                OM
-              </div>
-              <div>
-                <span className="text-sm font-black text-slate-900 block">
-                  Orange Money
-                </span>
-                <span className="text-[10px] text-slate-500">Paiement mobile</span>
-              </div>
-            </div>
-            <div
-              className={`flex h-5 w-5 items-center justify-center rounded-full border ${
-                moyenPaiement === 'om'
-                  ? 'bg-[#FF6600] border-[#FF6600] text-white'
-                  : 'border-slate-300'
-              }`}
-            >
-              {moyenPaiement === 'om' && <Check size={12} strokeWidth={3} />}
-            </div>
-          </div>
+                    {/* Label */}
+                    <span className="flex-1 text-sm font-bold text-stone-900">
+                      {m.label}
+                    </span>
 
-          {/* Téléphone */}
-          <div className="pt-1">
+                    {/* Radio épuré */}
+                    <span
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition ${
+                        actif
+                          ? 'border-[#0F2A4A] bg-[#0F2A4A]'
+                          : 'border-stone-300 bg-white'
+                      }`}
+                    >
+                      {actif && (
+                        <Check size={11} className="text-white" strokeWidth={3} />
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Numéro de téléphone — épuré */}
+          <section className="mb-6">
+            <h2 className="mb-3 px-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+              Numéro
+            </h2>
+
             {!isEditingPhone ? (
               <button
                 onClick={() => setIsEditingPhone(true)}
-                className="flex items-center gap-1.5 text-[11px] font-bold text-[#0C3B4A] hover:underline"
+                className="flex w-full items-center justify-between rounded-2xl border border-stone-200 bg-white px-4 py-3.5 text-left transition hover:border-stone-300"
               >
-                <Smartphone size={13} />
-                Renseigner mon numéro
-                {numeroTelephone && ` (${numeroTelephone})`}
+                <span className="flex items-center gap-2 text-xs font-medium text-stone-500">
+                  <Smartphone size={14} className="text-stone-400" />
+                  Numéro de paiement
+                </span>
+                <span className="text-xs font-bold text-stone-900">
+                  {numeroTelephone || 'Renseigner'}
+                </span>
               </button>
             ) : (
-              <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-2 border border-slate-200">
-                <span className="text-xs font-bold text-slate-500 pl-2">+221</span>
+              <div className="flex items-center gap-2 rounded-2xl border border-[#0F2A4A] bg-white p-2 pl-4">
+                <span className="text-xs font-semibold text-stone-500">+221</span>
                 <input
                   type="tel"
                   value={numeroTelephone}
                   onChange={(e) => setNumeroTelephone(e.target.value)}
                   placeholder="77 000 00 00"
-                  className="w-full text-xs font-bold text-slate-800 outline-none bg-transparent"
+                  className="flex-1 bg-transparent text-sm font-semibold text-stone-900 outline-none placeholder:font-normal placeholder:text-stone-300"
+                  autoFocus
                 />
                 <button
                   onClick={() => setIsEditingPhone(false)}
-                  className="rounded-lg bg-[#0C3B4A] px-2.5 py-1 text-[10px] font-bold text-white shrink-0"
+                  className="shrink-0 rounded-xl bg-[#0F2A4A] px-3 py-2 text-[10px] font-bold text-white"
                 >
                   OK
                 </button>
               </div>
             )}
-          </div>
-        </div>
+          </section>
 
-        {/* Erreur */}
-        {erreur && (
-          <div className="mb-4 p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
-            {erreur}
-          </div>
-        )}
-
-        {/* Bouton Payer */}
-        <button
-          onClick={handlePayer}
-          disabled={isPaying}
-          className="w-full py-4 bg-[#FF6B4A] text-white font-black text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 disabled:opacity-60"
-        >
-          {isPaying ? (
-            <>
-              <Loader2 className="animate-spin" size={18} />
-              Traitement...
-            </>
-          ) : (
-            <>
-              <ShoppingBag size={18} />
-              Payer maintenant
-            </>
+          {/* Erreur */}
+          {erreur && (
+            <div className="mb-4 rounded-2xl bg-stone-100 p-3 text-xs text-stone-600">
+              {erreur}
+            </div>
           )}
-        </button>
 
-        <p className="text-[10px] text-center text-slate-400 mt-3">
-          Simulation — aucun débit réel ne sera effectué.
-        </p>
-      </div>
+          {/* Note sécurité */}
+          <p className="flex items-center justify-center gap-1.5 text-[10px] font-medium text-stone-400">
+            <ShieldCheck size={11} />
+            Simulation · aucun débit réel
+          </p>
+        </main>
+      </Wrapper>
     );
   }
 
-  // ---------- Rendu ATTENTE (par défaut) ----------
+  // ============================================================
+  // ATTENTE
+  // ============================================================
   return (
-    <div className="min-h-screen bg-[#FAF6F0] flex flex-col items-center justify-center p-6 max-w-md mx-auto">
-      <img
-        src="https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800"
-        alt="Pêcheur en attente"
-        className="w-full h-56 object-cover rounded-3xl mb-6 shadow-sm"
-        onError={(e) => {
-          e.target.onerror = null;
-          e.target.src =
-            'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800';
-        }}
-      />
+    <Wrapper>
+      <Header title="Confirmation" />
 
-      <h2 className="text-xl font-black text-[#0F2A4A] text-center mb-3 leading-tight">
-        En attente de confirmation du pêcheur
-      </h2>
+      <main className="flex flex-1 flex-col items-center justify-center px-8 pb-6 text-center">
 
-      <p className="text-sm text-slate-500 text-center mb-6 leading-relaxed">
-        Le pêcheur vérifie ses stocks physiques. Vous pourrez payer dès qu'il aura validé.
-      </p>
-
-      <div className="w-full bg-white rounded-3xl p-4 shadow-sm border border-slate-100 mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
-            <Clock className="text-slate-400" size={22} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-slate-900 truncate">
-              {commande?.numero || 'Commande en cours'}
-            </p>
-            <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-              <Loader2 className="animate-spin" size={12} />
-              Vérification en cours...
-            </p>
-          </div>
+        {/* Icône horloge — simple, sans animation criarde */}
+        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-stone-100">
+          <Clock size={28} className="text-stone-500" strokeWidth={1.5} />
         </div>
-      </div>
 
-      <button
-        onClick={() => navigate('/acheteur/commandes')}
-        className="w-full py-4 bg-[#0F2A4A] text-white font-bold rounded-2xl flex items-center justify-center gap-2"
-      >
-        <ShoppingBag size={18} />
-        Voir mes commandes
-      </button>
-    </div>
+        <h2 className="mb-2 text-lg font-bold leading-tight text-stone-900">
+          En attente du pêcheur
+        </h2>
+
+        <p className="mb-8 max-w-[240px] text-sm leading-relaxed text-stone-500">
+          Il vérifie ses stocks. Vous pourrez payer dès qu'il aura validé.
+        </p>
+
+        {/* Numéro de commande — discret */}
+        <div className="mb-8 flex items-center gap-2 rounded-full bg-stone-100 px-4 py-2">
+          <Loader2 size={12} className="animate-spin text-stone-500" />
+          <span className="text-[11px] font-medium text-stone-600">
+            {commande?.numero || 'Vérification en cours...'}
+          </span>
+        </div>
+
+        <button
+          onClick={() => navigate('/acheteur/commandes')}
+          className="w-full rounded-2xl bg-[#0F2A4A] py-4 text-sm font-bold text-white transition active:scale-[0.98]"
+        >
+          Voir mes commandes
+        </button>
+      </main>
+    </Wrapper>
   );
 }

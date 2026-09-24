@@ -14,7 +14,7 @@ export default function AcheteurBottomNav({ className = '' }) {
       key: 'marche',
       label: 'Marché',
       Icon: Store,
-      onClick: () => navigate('/acheteur/marche'),
+      onClick: () => navigate('/acheteur/accueil'),
       active: isActive(['/marche', '/accueil']),
     },
     {

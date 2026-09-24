@@ -4,19 +4,28 @@ const API = axios.create({
   baseURL: import.meta.env.VITE_DJANGO_URL || 'http://localhost:8000/api',
 });
 
-// Intercepteur : Ajoute systématiquement le Bearer Token
+// ═══════════════════════════════════════════════════════════
+// INTERCEPTEUR REQUÊTE — Utilise le bon token selon la route
+// ═══════════════════════════════════════════════════════════
 API.interceptors.request.use(
   (config) => {
-    // Ne pas ajouter le token pour les routes publiques de connexion/inscription
-    const isAuthRoute = config.url.includes('/auth/connexion') || config.url.includes('/auth/inscription');
-    
+    const isAuthRoute =
+      config.url.includes('/auth/connexion') ||
+      config.url.includes('/auth/inscription') ||
+      config.url.includes('/auth/token/refresh');
+
     if (!isAuthRoute) {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      const isAdminRoute = config.url.includes('/admin/');
       
+      // Si c'est une route admin, on cherche 'adminToken', sinon 'access_token'
+      const token = isAdminRoute
+        ? localStorage.getItem('adminToken')
+        : (localStorage.getItem('access_token') || localStorage.getItem('token'));
+
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       } else {
-        console.error(" Aucun token d'accès trouvé dans le localStorage !");
+        console.warn(`Aucun token approprié trouvé pour la route : ${config.url}`);
       }
     }
     return config;
@@ -24,14 +33,23 @@ API.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Intercepteur de réponse : Empêche la redirection sauvage
+// ═══════════════════════════════════════════════════════════
+// INTERCEPTEUR RÉPONSE — Gestion propre des 401
+// ═══════════════════════════════════════════════════════════
 API.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      console.error(" Erreur 401 (Non autorisé) sur :", error.config?.url);
-      // Redirige vers la connexion UNIQUEMENT si le token est réellement expiré/inexistant
-      if (!localStorage.getItem('access_token')) {
+      const url = error.config?.url || '';
+      const isAdminRoute = url.includes('/admin/');
+      const isAdminLoginPage = window.location.pathname.includes('/admin/connexion');
+      const isNormalLoginPage = window.location.pathname.includes('/connexion');
+
+      if (isAdminRoute && !isAdminLoginPage) {
+        localStorage.removeItem('adminToken');
+        window.location.href = '/admin/connexion';
+      } else if (!isAdminRoute && !isNormalLoginPage) {
+        localStorage.removeItem('access_token');
         window.location.href = '/connexion';
       }
     }

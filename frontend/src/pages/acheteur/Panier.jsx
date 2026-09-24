@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ChevronLeft, Trash2, ShoppingBag, Plus, Minus,
-  CheckCircle2, Loader2, Clock, XCircle
+  ChevronLeft, Trash2, ShoppingBag, Plus, Minus, Loader2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { usePublications } from '../../context/PublicationContext';
 import { CommandeService } from '../../services/commandeService';
+
+
+const fallbackImage = '/images/fallback.png';
 
 const formatPrice = (p) =>
   `${new Intl.NumberFormat('fr-FR').format(Number(p) || 0)} FCFA`;
@@ -13,181 +16,154 @@ const formatPrice = (p) =>
 export default function Panier() {
   const navigate = useNavigate();
   const { utilisateur } = useAuth();
+  const { publications, chargerPublications } = usePublications();
 
+  // Clé unifiée et robuste
   const cartKey = utilisateur?.id
     ? `panier_acheteur_${utilisateur.id}`
-    : 'panier_acheteur_guest';
+    : 'panier_acheteur_global';
 
   const [panier, setPanier] = useState([]);
   const [adresse, setAdresse] = useState('');
-  const [etape, setEtape] = useState('recap');   // 'recap' | 'attente' | 'refusee'
-  const [commande, setCommande] = useState(null);
   const [chargement, setChargement] = useState(false);
   const [feedback, setFeedback] = useState('');
-  const pollRef = useRef(null);
+  // ids (en string) des produits que le serveur a signalés comme indisponibles
+  const [indisponibles, setIndisponibles] = useState([]);
 
-  // Charger le panier
+  // Rafraîchit les statuts des produits à l'ouverture du panier
+  useEffect(() => {
+    chargerPublications(true);
+  }, [chargerPublications]);
+
+  // ids des produits que le pêcheur a désactivés (statut != disponible)
+  const indisponiblesMarche = useMemo(() => {
+    const ids = new Set();
+    (publications?.produits || []).forEach((p) => {
+      if (p.statut && p.statut !== 'disponible') ids.add(String(p.id));
+    });
+    return ids;
+  }, [publications?.produits]);
+
+  // Indisponible = signalé par le marché à jour OU refusé par le serveur à la commande
+  const estIndispo = (item) =>
+    indisponibles.includes(String(item.id)) || indisponiblesMarche.has(String(item.id));
+
+  // Charger le panier au montage
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(cartKey) || '[]');
-      setPanier(saved);
-    } catch { setPanier([]); }
+      const saved = localStorage.getItem(cartKey);
+      const parsed = saved ? JSON.parse(saved) : [];
+      setPanier(Array.isArray(parsed) ? parsed : []);
+    } catch (e) {
+      console.error('Erreur lecture panier:', e);
+      setPanier([]);
+    }
   }, [cartKey]);
 
-  // Persister le panier
-  useEffect(() => {
-    if (panier.length >= 0) localStorage.setItem(cartKey, JSON.stringify(panier));
-  }, [panier, cartKey]);
+  // Sauvegarder dans le localStorage à chaque modification
+  const sauvegarderEtMettreAJour = (nouveauPanier) => {
+    setPanier(nouveauPanier);
+    try {
+      localStorage.setItem(cartKey, JSON.stringify(nouveauPanier));
+    } catch (e) {
+      console.error('Erreur écriture panier:', e);
+    }
+  };
 
-  // Polling pendant l'attente
-  useEffect(() => {
-    if (etape !== 'attente' || !commande?.id) return;
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const cmd = await CommandeService.recupererCommande(commande.id);
-        setCommande(cmd);
-
-        if (cmd.statut === 'en_attente_paiement' || cmd.statut === 'payee') {
-          clearInterval(pollRef.current);
-          handlePayerMaintenant(cmd);
-        } else if (cmd.statut === 'refusee' || cmd.statut === 'annulee') {
-          clearInterval(pollRef.current);
-          setEtape('refusee');
-        }
-      } catch (err) {
-        console.warn('Erreur polling:', err);
-      }
-    }, 5000);
-
-    return () => clearInterval(pollRef.current);
-  }, [etape, commande?.id]);
-
-  // ---------- Actions panier ----------
-  const augmenter = (id) =>
-    setPanier((prev) => prev.map((i) => i.id === id ? { ...i, quantite: i.quantite + 1 } : i));
-
-  const diminuer = (id) =>
-    setPanier((prev) =>
-      prev.map((i) => i.id === id ? { ...i, quantite: i.quantite - 1 } : i)
-          .filter((i) => i.quantite > 0)
+  const augmenter = (id) => {
+    const maj = panier.map((i) =>
+      String(i.id) === String(id) ? { ...i, quantite: (Number(i.quantite) || 0) + 1 } : i
     );
+    sauvegarderEtMettreAJour(maj);
+  };
 
-  const retirer = (id) => setPanier((prev) => prev.filter((i) => i.id !== id));
+  const diminuer = (id) => {
+    const maj = panier
+      .map((i) =>
+        String(i.id) === String(id) ? { ...i, quantite: (Number(i.quantite) || 0) - 1 } : i
+      )
+      .filter((i) => (Number(i.quantite) || 0) > 0);
+    sauvegarderEtMettreAJour(maj);
+  };
+
+  const retirer = (id) => {
+    const maj = panier.filter((i) => String(i.id) !== String(id));
+    sauvegarderEtMettreAJour(maj);
+  };
 
   const vider = () => {
-    setPanier([]);
+    sauvegarderEtMettreAJour([]);
+    setIndisponibles([]);
     localStorage.removeItem(cartKey);
   };
 
-  const sousTotal = panier.reduce((s, i) => s + i.prix * i.quantite, 0);
+  const retirerIndisponibles = () => {
+    sauvegarderEtMettreAJour(panier.filter((i) => !estIndispo(i)));
+    setIndisponibles([]);
+    setFeedback('');
+  };
 
-  // ---------- Commander ----------
+  // Le total ne compte que les produits encore commandables
+  const sousTotal = panier
+    .filter((i) => !estIndispo(i))
+    .reduce((s, i) => s + Number(i.prix || 0) * Number(i.quantite || 0), 0);
+
+  const nbIndispos = panier.filter(estIndispo).length;
+
   const handleCommander = async () => {
-    if (!adresse.trim()) { setFeedback('Adresse requise'); return; }
-    if (panier.length === 0) { setFeedback('Panier vide'); return; }
-    setChargement(true); setFeedback('');
+    if (nbIndispos > 0) {
+      setFeedback('Retirez les produits indisponibles avant de commander.');
+      return;
+    }
+    if (!adresse.trim()) {
+      setFeedback('Adresse de livraison requise');
+      return;
+    }
+    if (panier.length === 0) {
+      setFeedback('Votre panier est vide');
+      return;
+    }
+
+    setChargement(true);
+    setFeedback('');
 
     try {
       const payload = {
-        lignes: panier.map((i) => ({ produit_id: i.id, quantite: i.quantite })),
+        lignes: panier.map((i) => ({
+          produit_id: i.id,
+          quantite: Number(i.quantite) || 1,
+        })),
         adresse_livraison: adresse,
       };
       const cmd = await CommandeService.creerCommandeV2(payload);
-      setCommande(cmd);
       vider();
-      setEtape('attente');
+      navigate(`/acheteur/commande/attente/${cmd.id}`);
     } catch (err) {
-      setFeedback(err.response?.data?.detail || 'Erreur lors de la commande.');
+      console.error('Erreur commande:', err);
+      const data = err.response?.data;
+
+      // Le serveur nous dit quels produits ne sont plus disponibles
+      if (Array.isArray(data?.produits_indisponibles)) {
+        setIndisponibles(data.produits_indisponibles.map(String));
+      }
+
+      setFeedback(
+        data?.non_field_errors?.[0] ||
+        data?.detail ||
+        data?.erreur ||
+        err.message ||
+        'Erreur lors de la commande.'
+      );
     } finally {
       setChargement(false);
     }
   };
 
-  // ---------- Payer via PayDunya ----------
-  const handlePayerMaintenant = async (cmd) => {
-    setChargement(true);
-    try {
-      const res = await CommandeService.initierPaiement(cmd.id);
-      window.location.href = res.redirect_url;
-    } catch (err) {
-      setFeedback(err.response?.data?.erreur || 'Erreur PayDunya.');
-      setChargement(false);
-    }
-  };
-
-  // ==================== RENDU ====================
-
-  // Étape ATTTENTE
-  if (etape === 'attente') {
-    return (
-      <div className="min-h-screen bg-[#FAF6F0] flex flex-col items-center justify-center p-6 max-w-md mx-auto">
-        <img
-          src="https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800"
-          alt="Pêcheur en attente"
-          className="w-full h-64 object-cover rounded-3xl mb-6"
-        />
-        <h2 className="text-xl font-black text-[#0F2A4A] text-center mb-3">
-          En attente de confirmation du pêcheur
-        </h2>
-        <p className="text-sm text-slate-500 text-center mb-6 leading-relaxed">
-          Le pêcheur vérifie ses stocks physiques pour éviter tout déphasage.
-          Vous recevrez une notification dès qu'il aura validé.
-        </p>
-
-        <div className="w-full bg-white rounded-3xl p-4 shadow-sm border border-slate-100 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center">
-              <Clock className="text-slate-400" size={22} />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-bold text-slate-900">
-                {commande?.numero || 'Commande en cours'}
-              </p>
-              <p className="text-xs text-slate-500 flex items-center gap-1">
-                <Loader2 className="animate-spin" size={12} /> Vérification en cours...
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <button
-          onClick={() => navigate('/acheteur/accueil')}
-          className="w-full py-4 bg-[#0F2A4A] text-white font-bold rounded-2xl"
-        >
-          Retour au marché
-        </button>
-      </div>
-    );
-  }
-
-  // Étape REFUSÉE
-  if (etape === 'refusee') {
-    return (
-      <div className="min-h-screen bg-[#FAF6F0] flex flex-col items-center justify-center p-6 max-w-md mx-auto text-center">
-        <XCircle size={64} className="text-rose-500 mb-4" />
-        <h2 className="text-xl font-black text-[#0F2A4A] mb-3">
-          Commande refusée
-        </h2>
-        <p className="text-sm text-slate-500 mb-6">
-          Le pêcheur n'a pas pu honorer votre commande.
-        </p>
-        <button
-          onClick={() => navigate('/acheteur/accueil')}
-          className="w-full py-4 bg-[#0F2A4A] text-white font-bold rounded-2xl"
-        >
-          Retour au marché
-        </button>
-      </div>
-    );
-  }
-
-  // Étape RÉCAP (par défaut)
   return (
-    <div className="min-h-screen bg-[#FAF6F0] max-w-md mx-auto p-5">
+    <div className="min-h-screen bg-[#FAF6F0] max-w-md mx-auto p-5 pb-24">
       <header className="flex items-center justify-between mb-4">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate('/acheteur/accueil')}
           className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center"
         >
           <ChevronLeft size={20} />
@@ -197,7 +173,9 @@ export default function Panier() {
           <button onClick={vider} className="text-xs font-bold text-rose-500">
             Vider
           </button>
-        ) : <div className="w-10" />}
+        ) : (
+          <div className="w-10" />
+        )}
       </header>
 
       {panier.length === 0 ? (
@@ -219,58 +197,121 @@ export default function Panier() {
             </div>
           )}
 
-          {/* Liste articles */}
+          {nbIndispos > 0 && (
+            <div className="mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
+              {nbIndispos === 1
+                ? "1 produit de votre panier n'est plus disponible."
+                : `${nbIndispos} produits de votre panier ne sont plus disponibles.`}
+              <button
+                onClick={retirerIndisponibles}
+                className="mt-2 block font-bold underline"
+              >
+                Retirer les produits indisponibles
+              </button>
+            </div>
+          )}
+
           <div className="space-y-3 mb-4">
-            {panier.map((item) => (
-              <div key={item.id} className="bg-white rounded-2xl p-3 shadow-sm flex items-center gap-3">
-                <img src={item.image} alt={item.nom} className="w-16 h-16 rounded-xl object-cover" />
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-bold text-slate-900 truncate">{item.nom}</h3>
-                  <p className="text-[11px] text-slate-400">{formatPrice(item.prix)} / {item.unite || 'kg'}</p>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <button onClick={() => diminuer(item.id)} className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center">
-                      <Minus size={12} />
-                    </button>
-                    <span className="text-xs font-bold">{item.quantite}</span>
-                    <button onClick={() => augmenter(item.id)} className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center">
-                      <Plus size={12} />
-                    </button>
-                    <span className="ml-auto text-sm font-black">{formatPrice(item.prix * item.quantite)}</span>
+            {panier.map((item) => {
+              const indispo = estIndispo(item);
+              return (
+                <div
+                  key={item.id}
+                  className={`bg-white rounded-2xl p-3 shadow-sm flex items-center gap-3 ${
+                    indispo ? 'opacity-60' : ''
+                  }`}
+                >
+                  <img
+                    src={item.image}
+                    alt={item.nom}
+                    className={`w-16 h-16 rounded-xl object-cover ${indispo ? 'grayscale' : ''}`}
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = fallbackImage;
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-bold text-slate-900 truncate">
+                      {item.nom}
+                    </h3>
+                    {indispo ? (
+                      <p className="text-[11px] font-bold text-rose-600">
+                        Produit indisponible
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-slate-400">
+                        {formatPrice(item.prix)} / {item.unite || 'kg'}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <button
+                        onClick={() => diminuer(item.id)}
+                        disabled={indispo}
+                        className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center disabled:opacity-40"
+                      >
+                        <Minus size={12} />
+                      </button>
+                      <span className="text-xs font-bold min-w-[20px] text-center">
+                        {item.quantite}
+                      </span>
+                      <button
+                        onClick={() => augmenter(item.id)}
+                        disabled={indispo}
+                        className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center disabled:opacity-40"
+                      >
+                        <Plus size={12} />
+                      </button>
+                      <span className={`ml-auto text-sm font-black ${indispo ? 'line-through' : ''}`}>
+                        {formatPrice(Number(item.prix) * Number(item.quantite))}
+                      </span>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => retirer(item.id)}
+                    className="text-slate-300 hover:text-rose-500"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
-                <button onClick={() => retirer(item.id)} className="text-slate-300 hover:text-rose-500">
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          {/* Adresse */}
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
-            <label className="text-xs font-bold text-slate-600 block mb-2">Adresse de livraison</label>
+            <label className="text-xs font-bold text-slate-600 block mb-2">
+              Adresse de livraison
+            </label>
             <input
               type="text"
               value={adresse}
               onChange={(e) => setAdresse(e.target.value)}
               placeholder="Ex: 12 Rue de la Pêche, Dakar"
-              className="w-full px-3 py-2 bg-slate-50 rounded-xl text-sm border border-slate-200 outline-none"
+              className="w-full px-3 py-2 bg-slate-50 rounded-xl text-sm border border-slate-200 outline-none focus:ring-2 focus:ring-[#FF6B4A]/20"
             />
           </div>
 
-          {/* Total */}
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-4 flex justify-between items-center">
             <span className="text-sm font-bold text-slate-700">Total</span>
-            <span className="text-lg font-black text-[#FF6B4A]">{formatPrice(sousTotal)}</span>
+            <span className="text-lg font-black text-[#FF6B4A]">
+              {formatPrice(sousTotal)}
+            </span>
           </div>
 
-          {/* Bouton Commander */}
           <button
             onClick={handleCommander}
-            disabled={chargement}
+            disabled={chargement || nbIndispos > 0}
             className="w-full py-4 bg-[#FF6B4A] text-white font-black text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 disabled:opacity-60"
           >
-            {chargement ? <Loader2 className="animate-spin" size={18} /> : <ShoppingBag size={18} />}
-            {chargement ? 'Envoi...' : 'Commander'}
+            {chargement ? (
+              <Loader2 className="animate-spin" size={18} />
+            ) : (
+              <ShoppingBag size={18} />
+            )}
+            {chargement
+              ? 'Envoi...'
+              : nbIndispos > 0
+              ? 'Retirez les produits indisponibles'
+              : 'Commander'}
           </button>
         </>
       )}

@@ -17,8 +17,21 @@ export default function ConnexionAdmin() {
 
     try {
       const data = await AuthService.connexionAdmin(username, password);
-      localStorage.setItem('adminToken', data.token);
-      window.location.href = '/admin/dashboard';
+      console.log("Données de connexion reçues :", data);
+
+      // Le token d'accès se trouve dans data.tokens.access
+      const accessToken = data.tokens?.access;
+      const refreshToken = data.tokens?.refresh;
+
+      if (accessToken) {
+        localStorage.setItem('adminToken', accessToken);
+        if (refreshToken) {
+          localStorage.setItem('adminRefreshToken', refreshToken);
+        }
+        window.location.href = '/admin/dashboard';
+      } else {
+        setErrorMsg("Le serveur n'a pas renvoyé de jeton d'accès valide.");
+      }
     } catch (err) {
       if (err.response && err.response.data) {
         setErrorMsg(err.response.data.detail || 'Identifiants administrateur incorrects.');

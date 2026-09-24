@@ -73,41 +73,46 @@ class ProduitCommande(models.Model):
 
 class Livraison(models.Model):
     """
-    Une Livraison peut regrouper PLUSIEURS Commande (d'un même pêcheur pour
-    plusieurs clients de la même zone, ou de pêcheurs différents débarquant
-    au même endroit pour un même client / une même zone). Le livreur est
-    payé selon la distance totale du trajet, pas selon le nombre de
-    commandes regroupées — d'où un tarif_livraison unique sur la Livraison,
-    pas un prix par Commande.
+    Une Livraison regroupe 1 à N commandes (même pêcheur + même zone).
+    Elle n'existe QUE quand un livreur l'a acceptée.
     """
 
     class StatutLivraison(models.TextChoices):
-        EN_ATTENTE = "en_attente", "En attente d'un livreur"
         ACCEPTEE = "acceptee", "Acceptée par le livreur"
-        EN_COURS = "en_cours", "En cours"
+        EN_RECUPERATION = "en_recuperation", "Le livreur est au quai"
+        EN_LIVRAISON = "en_livraison", "Le livreur est en route vers le client"
         LIVREE = "livree", "Livrée"
+        ANNULEE = "annulee", "Annulée"
 
     livreur = models.ForeignKey(
         ProfilLivreur,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="livraisons"
+        related_name="livraisons",
     )
     commandes = models.ManyToManyField(Commande, related_name="livraisons")
 
     statut = models.CharField(
         max_length=30,
         choices=StatutLivraison.choices,
-        default=StatutLivraison.EN_ATTENTE
+        default=StatutLivraison.ACCEPTEE,  
     )
     tarif_livraison = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     itineraire = models.JSONField(null=True, blank=True)
+
+    position_latitude = models.FloatField(null=True, blank=True)
+    position_longitude = models.FloatField(null=True, blank=True)
+    position_updated_at = models.DateTimeField(null=True, blank=True)
+
+    date_acceptation = models.DateTimeField(null=True, blank=True)
+    date_recuperation = models.DateTimeField(null=True, blank=True)
     date_livraison = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"Livraison #{self.pk} - Livreur: {self.livreur if self.livreur else 'Non assigné'}"
-
+        nom = self.livreur.utilisateur.nom if self.livreur and self.livreur.utilisateur else "Non assigné"
+        return f"Livraison #{self.pk} - {nom} ({self.get_statut_display()})"
+    
 
 class Note(models.Model):
     auteur = models.ForeignKey(
@@ -126,6 +131,17 @@ class Note(models.Model):
     )
     commentaire = models.TextField(blank=True)
     date = models.DateTimeField(auto_now_add=True)
+
+    traite = models.BooleanField(default=False)
+    date_traitement = models.DateTimeField(null=True, blank=True)
+    action_prise = models.CharField(max_length=200, blank=True)
+    traite_par = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="signalements_traites",
+    )
 
     def __str__(self):
         return f"Note {self.etoile}/5 de {self.auteur} à {self.cible}"

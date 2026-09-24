@@ -1,18 +1,17 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Anchor, Bell, Check, CheckCircle, Fish, LayoutGrid, MapPin, Minus,
-  Package, Play, Plus, Search, ShoppingBag, ShoppingCart, SlidersHorizontal,
-  Star, Waves, X, Store, ChevronLeft, Trash2, Smartphone, CheckCircle2
+  Anchor, ArrowUpRight, BadgeCheck, Check, CheckCircle, Fish,
+  LayoutGrid, MapPin, Pause, Play, Plus, Waves,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { useCommandes } from '../../context/CommandeContext';
 import { usePublications } from '../../context/PublicationContext';
-import UserMenu from '../../components/UserMenu';
+import { useAudio } from '../../context/AudioContext';
+import AcheteurHeader from '../../components/AcheteurHeader';
 import AcheteurBottomNav from '../../components/AcheteurBottomNav';
 
 const locations = [
-  { id: 'tous', name: 'Toutes les zones', icon: Waves },
+  { id: 'tous', name: 'Toute la côte', icon: Waves },
   { id: 'soumbedioune', name: 'Soumbédioune', icon: Anchor },
   { id: 'yoff', name: 'Yoff', icon: MapPin },
   { id: 'kayar', name: 'Kayar', icon: MapPin },
@@ -20,90 +19,92 @@ const locations = [
 ];
 
 const categories = [
-  { id: 'tous', name: 'Tous les arrivages', icon: LayoutGrid },
+  { id: 'tous', name: 'Tout', icon: LayoutGrid },
   { id: 'poisson', name: 'Poissons' },
   { id: 'fruit_de_mer', name: 'Fruits de mer' },
 ];
 
-const fallbackImage = 'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?auto=format&fit=crop&w=800&q=80';
+const fallbackImage = '/images/fallback.png';
+const formatPrice = (price) =>
+  `${new Intl.NumberFormat('fr-FR').format(Number(price) || 0)} FCFA`;
 
-const formatPrice = (price) => `${new Intl.NumberFormat('fr-FR').format(Number(price) || 0)} FCFA`;
+const estDisponible = (product) => (product.statut ?? 'disponible') === 'disponible';
 
 const getSellerName = (product) => {
   const nestedName = `${product.pecheur?.prenom || ''} ${product.pecheur?.nom || ''}`.trim();
-  return nestedName || `${product.pecheur_prenom || ''} ${product.pecheur_nom || ''}`.trim() || 'Pêcheur Lebougui';
+  return (
+    nestedName ||
+    `${product.pecheur_prenom || ''} ${product.pecheur_nom || ''}`.trim() ||
+    'Pêcheur Lebougui'
+  );
 };
 
 const getSellerInitial = (name) => name.charAt(0).toUpperCase();
 
 export default function AcheteurDashboard() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { utilisateur } = useAuth();
   const { publications, chargerPublications } = usePublications();
-  const { mesCommandes, passerCommande } = useCommandes();
-
-  // Clé LocalStorage isolée par identifiant acheteur
-  const cartStorageKey = utilisateur?.id ? `panier_acheteur_${utilisateur.id}` : 'panier_acheteur_guest';
+  const { currentId: audioEnCours, play: playAudio, pause: pauseAudio } = useAudio();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('tous');
   const [selectedCategory, setSelectedCategory] = useState('tous');
 
-  // Initialisation du panier
-  const [panier, setPanier] = useState(() => {
-    try {
-      const key = utilisateur?.id ? `panier_acheteur_${utilisateur.id}` : 'panier_acheteur_guest';
-      return JSON.parse(localStorage.getItem(key) || '[]');
-    } catch {
-      return [];
-    }
-  });
-
+  const [panier, setPanier] = useState([]);
   const [toastMessage, setToastMessage] = useState('');
   const [showToast, setShowToast] = useState(false);
-  const [playingAudioId, setPlayingAudioId] = useState(null);
-  const audioRef = useRef(null);
 
-  // ÉTATS DU MODAL PANIER/PAIEMENT STATIQUE
-  const [isPanierModalOpen, setIsPanierModalOpen] = useState(false);
-  const [fraisLivraison] = useState(1500);
-  const [moyenPaiement, setMoyenPaiement] = useState('wave');
-  const [numeroTelephone, setNumeroTelephone] = useState(() => utilisateur?.telephone || '770000000');
-  const [isEditingPhone, setIsEditingPhone] = useState(false);
-  const [isOrdering, setIsOrdering] = useState(false);
+  const cartKey = utilisateur?.id
+    ? `panier_acheteur_${utilisateur.id}`
+    : 'panier_acheteur_guest';
 
   useEffect(() => {
     if (!localStorage.getItem('access_token')) {
       navigate('/connexion');
       return;
     }
-    chargerPublications();
+    chargerPublications(true);
   }, [chargerPublications, navigate]);
 
   useEffect(() => {
-    if (cartStorageKey) {
-      try {
-        const saved = JSON.parse(localStorage.getItem(cartStorageKey) || '[]');
-        setPanier(saved);
-      } catch {
-        setPanier([]);
-      }
+    if (!cartKey) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(cartKey) || '[]');
+      setPanier(Array.isArray(saved) ? saved : []);
+    } catch {
+      setPanier([]);
     }
-  }, [cartStorageKey]);
-
-  useEffect(() => {
-    if (cartStorageKey) {
-      localStorage.setItem(cartStorageKey, JSON.stringify(panier));
-    }
-  }, [panier, cartStorageKey]);
-
-  useEffect(() => () => audioRef.current?.pause(), []);
+  }, [cartKey]);
 
   const showFeedback = (message) => {
     setToastMessage(message);
     setShowToast(true);
-    window.setTimeout(() => setShowToast(false), 3000);
+    window.setTimeout(() => setShowToast(false), 2000);
+  };
+
+  const saveCartToStorage = (updatedCart) => {
+    setPanier(updatedCart);
+    try {
+      localStorage.setItem(cartKey, JSON.stringify(updatedCart));
+      // notifie les autres composants (header, etc.)
+      window.dispatchEvent(new Event('cart:update'));
+    } catch (e) {
+      console.error('Erreur sauvegarde panier:', e);
+    }
+  };
+
+  const toggleAudio = (product) => {
+    if (!product.audio) {
+      showFeedback('Aucune note vocale disponible pour ce produit');
+      return;
+    }
+    const id = `prod-${product.id}`;
+    if (audioEnCours === id) {
+      pauseAudio();
+    } else {
+      playAudio(id, product.audio);
+    }
   };
 
   const filteredProducts = useMemo(() => {
@@ -111,46 +112,36 @@ export default function AcheteurDashboard() {
     return (publications.produits || []).filter((product) => {
       const searchable = `${product.nom || ''} ${product.categorie || ''} ${product.adresse || ''} ${product.description || ''}`.toLowerCase();
       const matchesQuery = !query || searchable.includes(query);
-      const matchesLocation = selectedLocation === 'tous' || product.adresse?.toLowerCase().includes(selectedLocation);
-      const matchesCategory = selectedCategory === 'tous' || product.categorie === selectedCategory;
+      const matchesLocation =
+        selectedLocation === 'tous' ||
+        product.adresse?.toLowerCase().includes(selectedLocation);
+      const matchesCategory =
+        selectedCategory === 'tous' || product.categorie === selectedCategory;
       return matchesQuery && matchesLocation && matchesCategory;
     });
   }, [publications.produits, searchQuery, selectedCategory, selectedLocation]);
 
-  const cartCount = panier.length;
+  const cartCount = panier.reduce((t, i) => t + Number(i.quantite || 0), 0);
 
-  // Calcul du sous-total et du total pour le panier
-  const sousTotal = panier.reduce((acc, item) => acc + (Number(item.prix) * Number(item.quantite)), 0);
-  const totalPanier = sousTotal > 0 ? sousTotal + fraisLivraison : 0;
-
-  // Ajouter au panier sans ouvrir le modal
-  const addToCart = (product) => {
-    const existingProduct = panier.find((item) => item.id === product.id);
-
-    if (existingProduct) {
-      showFeedback("Ce produit est déjà dans votre panier.");
+  const handlePlusClick = (product) => {
+    if (!estDisponible(product)) {
+      showFeedback(`${product.nom} n'est plus disponible`);
       return;
     }
-
-    const newItem = {
-      id: product.id,
-      nom: product.nom,
-      prix: Number(product.prix) || 0,
-      quantite: 1,
-      image: product.media || product.image || fallbackImage,
-      unite: product.unite || 'kg',
-      adresse: product.adresse || 'Dakar',
-    };
-
-    setPanier((current) => [...current, newItem]);
-    showFeedback(`${product.nom} ajouté au panier !`);
-  };
-
-  // Clic sur "Commander" : Ajoute le produit s'il n'y est pas, puis ouvre le popup
-  const handleCommanderDirect = (product) => {
-    const existingProduct = panier.find((item) => item.id === product.id);
-    if (!existingProduct) {
-      const newItem = {
+    let current = [];
+    try {
+      current = JSON.parse(localStorage.getItem(cartKey) || '[]');
+    } catch {
+      current = [];
+    }
+    const exists = current.some((item) => String(item.id) === String(product.id));
+    if (exists) {
+      showFeedback('Ce produit est déjà dans le panier');
+      return;
+    }
+    const updated = [
+      ...current,
+      {
         id: product.id,
         nom: product.nom,
         prix: Number(product.prix) || 0,
@@ -158,624 +149,270 @@ export default function AcheteurDashboard() {
         image: product.media || product.image || fallbackImage,
         unite: product.unite || 'kg',
         adresse: product.adresse || 'Dakar',
-      };
-      setPanier((current) => [...current, newItem]);
+      },
+    ];
+    saveCartToStorage(updated);
+    showFeedback(`${product.nom} ajouté au panier`);
+  };
+
+  const handleCommanderClick = (product) => {
+    if (!estDisponible(product)) {
+      showFeedback(`${product.nom} n'est plus disponible`);
+      return;
     }
-    setIsPanierModalOpen(true);
-  };
-
-  // Gestion des quantités dans le panier modal
-  const augmenterQuantite = (id) => {
-    setPanier((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, quantite: item.quantite + 1 } : item))
-    );
-  };
-
-  const diminuerQuantite = (id) => {
-    setPanier((prev) =>
-      prev
-        .map((item) => (item.id === id ? { ...item, quantite: item.quantite - 1 } : item))
-        .filter((item) => item.quantite > 0)
-    );
-  };
-
-  const retirerProduit = (id) => {
-    setPanier((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const viderPanier = () => {
-    setPanier([]);
-    localStorage.removeItem(cartStorageKey);
-  };
-
-  // Confirmation de la commande statique dans le popup
-  const validerCommandeStatique = async () => {
-    if (panier.length === 0) return;
-    setIsOrdering(true);
-
+    let current = [];
     try {
-      for (const item of panier) {
-        await passerCommande(item.id, item.quantite);
-      }
-
-      const methodeNom = moyenPaiement === 'wave' ? 'Wave' : 'Orange Money';
-      viderPanier();
-      setIsPanierModalOpen(false);
-      showFeedback(`Commande transmise via ${methodeNom} (${numeroTelephone}) !`);
-
-      setTimeout(() => {
-        navigate('/acheteur/commandes');
-      }, 1500);
-    } catch (error) {
-      showFeedback('Erreur lors de la validation.');
-    } finally {
-      setIsOrdering(false);
+      current = JSON.parse(localStorage.getItem(cartKey) || '[]');
+    } catch {
+      current = [];
     }
+    const exists = current.some((item) => String(item.id) === String(product.id));
+    if (!exists) {
+      const updated = [
+        ...current,
+        {
+          id: product.id,
+          nom: product.nom,
+          prix: Number(product.prix) || 0,
+          quantite: 1,
+          image: product.media || product.image || fallbackImage,
+          unite: product.unite || 'kg',
+          adresse: product.adresse || 'Dakar',
+        },
+      ];
+      saveCartToStorage(updated);
+    }
+    navigate('/acheteur/panier');
   };
-
-  const playAudio = (product) => {
-    if (!product.audio) {
-      showFeedback('Aucune note vocale disponible pour ce produit');
-      return;
-    }
-    if (playingAudioId === product.id) {
-      audioRef.current?.pause();
-      setPlayingAudioId(null);
-      return;
-    }
-    audioRef.current?.pause();
-    const audio = new Audio(product.audio);
-    audioRef.current = audio;
-    audio.onended = () => setPlayingAudioId(null);
-    audio.onerror = () => {
-      setPlayingAudioId(null);
-      showFeedback('Lecture de la note vocale impossible');
-    };
-    audio.play().then(() => setPlayingAudioId(product.id)).catch(() => showFeedback('Lecture de la note vocale impossible'));
-  };
-
-  const formatCategory = (category) => category === 'fruit_de_mer' ? 'Fruit de mer' : 'Poisson';
 
   return (
     <div className="min-h-screen bg-stone-300 font-sans antialiased sm:flex sm:items-center sm:justify-center sm:py-6">
       <div className="relative flex h-screen w-full max-w-md flex-col overflow-hidden bg-[#FAF6F0] sm:h-[880px] sm:max-h-[92vh] sm:rounded-[40px] sm:border-8 sm:border-stone-300 sm:shadow-2xl">
-        <main className="no-scrollbar h-full overflow-y-auto px-4 pb-24 pt-5">
-          
-          {/* HEADER */}
-          <header className="flex items-center justify-between pb-1">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h1 className="text-base font-extrabold leading-tight text-stone-900">
-                  {utilisateur?.prenom ? `Chez ${utilisateur.prenom}` : 'Marché Lebougui'}
-                </h1>
-                {utilisateur?.status_premium?.statut === 'actif' && (
-                  <span className="rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-cyan-800">
-                    PRO
-                  </span>
-                )}
-              </div>
-              <p className="flex items-center gap-1 text-[11px] font-medium text-stone-500">
-                <MapPin size={12} className="text-stone-400" /> Dakar · Plateau
-              </p>
-            </div>
+        <main className="no-scrollbar h-full overflow-y-auto pb-24">
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsPanierModalOpen(true)}
-                aria-label={`Panier, ${cartCount} articles`}
-                className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-stone-800 shadow-sm transition hover:bg-white"
-              >
-                <ShoppingBag size={17} />
-                {cartCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-[#FAF6F0] bg-[#FF6B4A] text-[10px] font-black text-white">
-                    {cartCount}
-                  </span>
-                )}
-              </button>
+          {/* HEADER HÉRITÉ */}
+          <AcheteurHeader
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onFilterClick={() =>
+              setSelectedCategory(selectedCategory === 'tous' ? 'poisson' : 'tous')
+            }
+            cartCount={cartCount}
+            locationLabel="Dakar, Plateau"
+          />
 
-              <UserMenu
-                photo={utilisateur?.photo}
-                prenom={utilisateur?.prenom}
-                nom={utilisateur?.nom}
-                role="Acheteur"
-                showName={false}
-              />
-            </div>
-          </header>
-
-          {/* FILTRES LIEUX */}
-          <section className="no-scrollbar flex gap-2 overflow-x-auto py-4">
-            {locations.map(({ id, name, icon: Icon }) => (
-              <button
-                type="button"
-                key={id}
-                onClick={() => setSelectedLocation(id)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold shadow-sm transition ${
-                  selectedLocation === id
-                    ? 'bg-[#0C3B4A] text-white'
-                    : 'bg-stone-200/80 text-stone-700 hover:bg-stone-300'
-                }`}
-              >
-                <Icon size={14} className={selectedLocation === id ? 'text-cyan-300' : 'text-stone-500'} />
-                {name}
-              </button>
-            ))}
+          {/* ZONES DE PÊCHE */}
+          <section className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3 pt-4">
+            {locations.map(({ id, name, icon: Icon }) => {
+              const active = selectedLocation === id;
+              return (
+                <button
+                  type="button"
+                  key={id}
+                  onClick={() => setSelectedLocation(id)}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                    active
+                      ? 'bg-[#0C3B4A] text-white'
+                      : 'bg-white text-stone-500 hover:text-stone-800'
+                  }`}
+                >
+                  <Icon size={13} className={active ? 'text-[#5FD9C4]' : 'text-stone-400'} />
+                  {name}
+                </button>
+              );
+            })}
           </section>
 
-          {/* BARRE DE RECHERCHE */}
-          <section className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
-              <input
-                id="market-search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                type="search"
-                placeholder="Rechercher thiof, yaboye, poulpe..."
-                className="w-full rounded-2xl border-0 bg-white py-2.5 pl-10 pr-4 text-xs text-stone-800 shadow-sm outline-none placeholder:text-stone-400 focus:ring-2 focus:ring-[#0C3B4A]/20"
-              />
-            </div>
-            <button
-              type="button"
-              aria-label="Filtres"
-              onClick={() => setSelectedCategory(selectedCategory === 'tous' ? 'poisson' : 'tous')}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-stone-600 shadow-sm hover:bg-stone-50"
-            >
-              <SlidersHorizontal size={16} />
-            </button>
+          {/* ONGLETS CATEGORIES */}
+          <section className="flex items-center gap-5 border-b border-stone-200 px-4">
+            {categories.map(({ id, name, icon: Icon }) => {
+              const active = selectedCategory === id;
+              return (
+                <button
+                  type="button"
+                  key={id}
+                  onClick={() => setSelectedCategory(id)}
+                  className={`flex items-center gap-1.5 border-b-2 pb-2.5 pt-1 text-sm font-bold transition ${
+                    active
+                      ? 'border-[#FF6B4A] text-stone-900'
+                      : 'border-transparent text-stone-400 hover:text-stone-600'
+                  }`}
+                >
+                  {Icon && <Icon size={14} />}
+                  {name}
+                </button>
+              );
+            })}
           </section>
 
-          {/* CATEGORIES */}
-          <section className="no-scrollbar flex gap-2 overflow-x-auto pb-4 pt-3">
-            {categories.map(({ id, name }) => (
-              <button
-                type="button"
-                key={id}
-                onClick={() => setSelectedCategory(id)}
-                className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-bold shadow-sm transition ${
-                  selectedCategory === id
-                    ? 'bg-[#0C3B4A] text-white'
-                    : 'bg-white text-stone-600 hover:bg-stone-100'
-                }`}
-              >
-                {name}
-              </button>
-            ))}
-          </section>
-
-          {/* LISTE DES PRODUITS */}
-          <section className="space-y-4">
+          {/* GRILLE PRODUITS */}
+          <section className="px-4 pt-4">
             {publications.chargement ? (
-              <div className="py-12 text-center text-sm text-stone-500">Chargement des arrivages...</div>
+              <div className="grid grid-cols-2 gap-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="overflow-hidden rounded-[22px] bg-white shadow-sm shadow-black/5">
+                    <div className="aspect-[4/5] w-full animate-pulse bg-stone-200" />
+                    <div className="space-y-2 p-2.5">
+                      <div className="h-3 w-3/4 animate-pulse rounded-full bg-stone-200" />
+                      <div className="h-3 w-1/2 animate-pulse rounded-full bg-stone-200" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : filteredProducts.length === 0 ? (
-              <div className="py-12 text-center">
-                <Fish size={38} className="mx-auto mb-3 text-stone-300" />
-                <p className="text-sm font-semibold text-stone-700">Aucun produit trouvé</p>
-                <p className="mt-1 text-xs text-stone-500">Modifiez votre recherche ou vos filtres.</p>
+              <div className="py-16 text-center">
+                <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-[28px] bg-[#0C3B4A]/5">
+                  <Fish size={28} className="text-[#0C3B4A]/40" />
+                </div>
+                <p className="text-sm font-bold text-stone-700">Aucun produit trouvé</p>
+                <p className="mt-1 text-xs text-stone-400">Modifiez votre recherche ou vos filtres.</p>
               </div>
             ) : (
-              filteredProducts.map((product) => {
-                const sellerName = getSellerName(product);
-                const isPlaying = playingAudioId === product.id;
-                const isInCart = panier.some((item) => item.id === product.id);
+              <div className="grid grid-cols-2 gap-3">
+                {filteredProducts.map((product) => {
+                  const sellerName = getSellerName(product);
+                  const panierItem = panier.find((item) => String(item.id) === String(product.id));
+                  const isInCart = !!panierItem;
+                  const disponible = estDisponible(product);
+                  const audioId = `prod-${product.id}`;
+                  const isPlaying = audioEnCours === audioId;
 
-                return (
-                  <article key={product.id} className="space-y-3 rounded-3xl border border-stone-100 bg-white p-3 shadow-sm">
-                    <button
-                      type="button"
+                  return (
+                    <div
+                      key={product.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => navigate(`/acheteur/produit/${product.id}`)}
-                      className="relative block h-44 w-full overflow-hidden rounded-2xl bg-stone-200 text-left"
+                      onKeyDown={(e) => e.key === 'Enter' && navigate(`/acheteur/produit/${product.id}`)}
+                      className="group cursor-pointer overflow-hidden rounded-[22px] bg-white shadow-sm shadow-black/5 transition active:scale-[0.98]"
                     >
-                      <img src={product.media || product.image || fallbackImage} alt={product.nom} className="h-full w-full object-cover" />
-                      <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-md">
-                        <MapPin size={12} className="text-cyan-300" />
-                        {product.adresse || 'Soumbédioune'}
-                      </span>
-                    </button>
+                      <div className="relative aspect-[4/5] w-full overflow-hidden bg-stone-200">
+                        <img
+                          src={product.media || product.image || fallbackImage}
+                          alt={product.nom}
+                          className={`h-full w-full object-cover transition duration-300 group-hover:scale-105 ${
+                            disponible ? '' : 'grayscale opacity-60'
+                          }`}
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = fallbackImage;
+                          }}
+                        />
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 to-transparent" />
 
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h2 className="text-base font-extrabold leading-snug text-stone-900">{product.nom}</h2>
-                        <p className="text-xs font-medium text-stone-500">
-                          {product.description || `Pêche du jour · ${formatCategory(product.categorie)}`}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => addToCart(product)}
-                        aria-label={`Ajouter ${product.nom} au panier`}
-                        className={`flex h-8 w-8 items-center justify-center rounded-xl shadow-sm transition active:scale-95 ${
-                          isInCart 
-                            ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' 
-                            : 'bg-orange-100/70 text-orange-700 hover:bg-orange-200'
-                        }`}
-                      >
-                        {isInCart ? <Check size={16} /> : <Plus size={16} />}
-                      </button>
-                    </div>
+                        {product.audio && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleAudio(product);
+                            }}
+                            aria-label={isPlaying ? 'Pause' : 'Lecture de la note vocale'}
+                            className={`absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full backdrop-blur-sm transition ${
+                              isPlaying ? 'bg-[#FF6B4A] text-white' : 'bg-black/45 text-white hover:bg-black/60'
+                            }`}
+                          >
+                            {isPlaying ? <Pause size={11} fill="currentColor" /> : <Play size={11} fill="currentColor" />}
+                          </button>
+                        )}
 
-                    <div className="flex items-center justify-between rounded-2xl border border-stone-100 bg-stone-50 p-2.5">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#0C3B4A] text-xs font-bold text-white">
-                          {product.pecheur?.photo ? (
-                            <img src={product.pecheur.photo} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            getSellerInitial(sellerName)
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <span className="block truncate text-xs font-bold text-stone-800">{sellerName}</span>
-                          {product.pecheur?.est_premium && (
-                            <span className="block text-[9px] font-bold text-emerald-600">Pêcheur vérifié</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => playAudio(product)}
-                        className="flex shrink-0 items-center gap-1.5 rounded-xl border border-stone-200/80 bg-white px-2.5 py-1 text-[11px] font-bold text-stone-700 shadow-sm transition hover:bg-stone-100"
-                      >
-                        {isPlaying ? (
-                          <span className="flex h-3 items-end gap-0.5">
-                            <span className="h-2 w-0.5 animate-pulse bg-[#FF6B4A]" />
-                            <span className="h-3 w-0.5 animate-pulse bg-[#FF6B4A]" />
-                            <span className="h-1.5 w-0.5 animate-pulse bg-[#FF6B4A]" />
-                          </span>
-                        ) : (
-                          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-orange-500/10 text-[#FF6B4A]">
-                            <Play size={10} fill="currentColor" />
+                        {!disponible && (
+                          <span className="absolute right-2 top-2 rounded-full bg-rose-600 px-2 py-0.5 text-[9px] font-bold text-white">
+                            Épuisé
                           </span>
                         )}
-                        Note vocale
-                      </button>
-                    </div>
 
-                    <div className="flex items-center justify-between pt-1">
-                      <div>
-                        <span className="block text-[9px] font-bold uppercase tracking-wider text-stone-400">PRIX DIRECT</span>
-                        <p className="text-base font-black text-stone-900">
-                          {formatPrice(product.prix)} <span className="text-xs font-medium text-stone-500">/ {product.unite || 'kg'}</span>
-                        </p>
+                        <div className="absolute inset-x-2 bottom-2 flex items-center gap-1.5">
+                          <div className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/50 bg-[#0C3B4A] text-[9px] font-bold text-white">
+                            {product.pecheur?.photo ? (
+                              <img src={product.pecheur.photo} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              getSellerInitial(sellerName)
+                            )}
+                          </div>
+                          <span className="truncate text-[10px] font-semibold text-white/90">{sellerName}</span>
+                          {product.pecheur?.est_premium && (
+                            <BadgeCheck size={11} className="shrink-0 text-[#5FD9C4]" />
+                          )}
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCommanderDirect(product)}
-                        className="flex items-center gap-2 rounded-2xl bg-[#FF6B4A] px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition hover:bg-[#E85A39] active:scale-95"
-                      >
-                        <ShoppingCart size={15} />
-                        Commander
-                      </button>
+
+                      <div className="p-2.5">
+                        <h2 className="font-display truncate text-[13px] font-bold leading-tight text-stone-900">
+                          {product.nom}
+                        </h2>
+                        <p className="mt-0.5 truncate text-[10px] font-medium text-stone-400">
+                          {product.adresse || 'Dakar'}
+                        </p>
+
+                        <div className="mt-2 flex items-end justify-between gap-1">
+                          <div className="min-w-0">
+                            <p
+                              className={`font-display truncate text-sm font-bold leading-none ${
+                                disponible ? 'text-stone-900' : 'text-stone-400'
+                              }`}
+                            >
+                              {formatPrice(product.prix)}
+                            </p>
+                            <p className="mt-0.5 text-[9px] font-medium text-stone-400">/ {product.unite || 'kg'}</p>
+                          </div>
+
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCommanderClick(product);
+                              }}
+                              disabled={!disponible}
+                              aria-label={`Commander ${product.nom} maintenant`}
+                              className={`flex h-7 w-7 items-center justify-center rounded-full border transition ${
+                                disponible
+                                  ? 'border-stone-200 text-stone-600 hover:border-[#0C3B4A] hover:text-[#0C3B4A]'
+                                  : 'cursor-not-allowed border-stone-100 text-stone-300'
+                              }`}
+                            >
+                              <ArrowUpRight size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePlusClick(product);
+                              }}
+                              disabled={!disponible}
+                              aria-label={disponible ? `Ajouter ${product.nom} au panier` : `${product.nom} indisponible`}
+                              className={`flex h-7 w-7 items-center justify-center rounded-full shadow-sm transition ${
+                                !disponible
+                                  ? 'cursor-not-allowed bg-stone-100 text-stone-300'
+                                  : isInCart
+                                  ? 'bg-emerald-500 text-white'
+                                  : 'bg-[#FF6B4A] text-white hover:bg-[#E85A39]'
+                              }`}
+                            >
+                              {isInCart ? <Check size={13} /> : <Plus size={13} />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </article>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </section>
         </main>
 
-        {/* FOOTER DE NAVIGATION */}
-        <nav className="absolute bottom-3 left-4 right-4 z-30 flex items-center justify-between rounded-full border border-stone-200/60 bg-white/95 px-5 py-2.5 shadow-xl backdrop-blur-md">
-          <button
-            type="button"
-            onClick={() => navigate('/acheteur/accueil')}
-            className={`flex flex-col items-center gap-0.5 transition ${
-              location.pathname.includes('/marche') || location.pathname.includes('/accueil')
-                ? 'font-extrabold text-[#0C3B4A]'
-                : 'font-medium text-stone-400 hover:text-stone-700'
-            }`}
-          >
-            <Store size={19} />
-            <span className="text-[10px]">Marché</span>
-          </button>
+        {/* NAVIGATION */}
+        <AcheteurBottomNav />
 
-          <button
-            type="button"
-            onClick={() => navigate('/acheteur/commandes')}
-            className={`flex flex-col items-center gap-0.5 transition ${
-              location.pathname.includes('/commandes')
-                ? 'font-extrabold text-[#0C3B4A]'
-                : 'font-medium text-stone-400 hover:text-stone-700'
-            }`}
-          >
-            <Package size={19} />
-            <span className="text-[10px]">Commandes</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate('/acheteur/alertes')}
-            className={`relative flex flex-col items-center gap-0.5 transition ${
-              location.pathname.includes('/alertes')
-                ? 'font-extrabold text-[#0C3B4A]'
-                : 'font-medium text-stone-400 hover:text-stone-700'
-            }`}
-          >
-            <Bell size={19} />
-            {mesCommandes?.liste?.some((order) => order.statut === 'en_attente') && (
-              <span className="absolute right-1 top-0 h-2 w-2 rounded-full bg-[#FF6B4A]" />
-            )}
-            <span className="text-[10px]">Alertes</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate('/acheteur/premium')}
-            className={`flex flex-col items-center gap-0.5 transition ${
-              location.pathname.includes('/premium')
-                ? 'font-extrabold text-[#0C3B4A]'
-                : 'font-medium text-stone-400 hover:text-stone-700'
-            }`}
-          >
-            <Star size={19} />
-            <span className="text-[10px]">Premium</span>
-          </button>
-        </nav>
-
-        {/* TOAST FEEDBACK */}
+        {/* TOAST */}
         {showToast && (
-          <div className="absolute left-1/2 top-16 z-50 flex max-w-[90%] -translate-x-1/2 items-center gap-2 rounded-2xl bg-stone-900/95 px-4 py-3 text-center text-xs font-bold text-white shadow-2xl backdrop-blur-sm animate-fade-in">
-            <CheckCircle size={16} className="shrink-0 text-emerald-400" />
+          <div className="lb-toast absolute left-1/2 top-4 z-50 flex max-w-[88%] -translate-x-1/2 items-center gap-2 rounded-2xl bg-[#0C3B4A] px-4 py-3 text-center text-xs font-semibold text-white shadow-2xl">
+            <CheckCircle size={15} className="shrink-0 text-[#5FD9C4]" />
             <span>{toastMessage}</span>
           </div>
         )}
-
-        {/* POPUP PANIER & PAIEMENT (EXACTEMENT COMME L'IMAGE) */}
-        {isPanierModalOpen && (
-          <div className="absolute inset-0 z-50 flex flex-col bg-[#FAF6F0] animate-in slide-in-from-bottom duration-300">
-            
-            {/* HEADER DU POPUP */}
-            <header className="flex items-center justify-between px-5 pt-6 pb-2">
-              <button
-                type="button"
-                onClick={() => setIsPanierModalOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-stone-800 shadow-sm transition active:scale-95"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              
-              <h1 className="text-lg font-extrabold text-[#0C3B4A]">Mon Panier</h1>
-
-              {panier.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={viderPanier}
-                  className="text-xs font-bold text-rose-500 hover:text-rose-600 transition"
-                >
-                  Vider le panier
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setIsPanierModalOpen(false)}
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-stone-800 shadow-sm"
-                >
-                  <Search size={18} />
-                </button>
-              )}
-            </header>
-
-            {/* CORPS DU POPUP */}
-            <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-28 pt-2">
-              {panier.length === 0 ? (
-                <div className="mt-20 text-center">
-                  <ShoppingBag size={48} className="mx-auto mb-3 text-stone-300" />
-                  <p className="text-base font-bold text-stone-700">Votre panier est vide</p>
-                  <p className="mt-1 text-xs text-stone-400">Découvrez nos arrivages frais sur le marché.</p>
-                  <button
-                    type="button"
-                    onClick={() => setIsPanierModalOpen(false)}
-                    className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-[#0C3B4A] px-5 py-2.5 text-xs font-bold text-white shadow-md"
-                  >
-                    Retour au marché
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  
-                  {/* LISTE DES ARTICLES DANS LE PANIER */}
-                  {panier.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-3 rounded-3xl bg-white p-3 shadow-sm border border-stone-100/80"
-                    >
-                      <img
-                        src={item.image}
-                        alt={item.nom}
-                        className="h-20 w-20 rounded-2xl object-cover shrink-0"
-                      />
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between">
-                          <h3 className="text-sm font-extrabold text-stone-900 truncate">{item.nom}</h3>
-                          <button
-                            type="button"
-                            onClick={() => retirerProduit(item.id)}
-                            className="text-stone-300 hover:text-rose-500 transition p-0.5"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                        
-                        <p className="text-[11px] font-medium text-stone-400 mt-0.5">
-                          {formatPrice(item.prix)} / {item.unite || 'kg'}
-                        </p>
-
-                        <div className="mt-2.5 flex items-center justify-between">
-                          <div className="flex items-center gap-2.5 rounded-xl bg-stone-100/80 px-2.5 py-1">
-                            <button
-                              type="button"
-                              onClick={() => diminuerQuantite(item.id)}
-                              className="text-stone-600 hover:text-stone-900"
-                            >
-                              <Minus size={12} />
-                            </button>
-                            <span className="text-xs font-black text-stone-800">
-                              {item.quantite} {item.unite || 'kg'}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => augmenterQuantite(item.id)}
-                              className="text-stone-600 hover:text-stone-900"
-                            >
-                              <Plus size={12} />
-                            </button>
-                          </div>
-
-                          <span className="text-sm font-black text-stone-900">
-                            {formatPrice(item.prix * item.quantite)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* RÉSUMÉ DE LA COMMANDE */}
-                  <div className="mt-5 rounded-3xl bg-white p-5 shadow-sm border border-stone-100 space-y-3">
-                    <h2 className="text-base font-extrabold text-[#0C3B4A]">Résumé de la commande</h2>
-                    
-                    <div className="flex justify-between text-xs font-medium text-stone-500 pt-1">
-                      <span>Sous-total</span>
-                      <span className="font-bold text-stone-800">{formatPrice(sousTotal)}</span>
-                    </div>
-
-                    <div className="flex justify-between text-xs font-medium text-stone-500">
-                      <span>Livraison</span>
-                      <span className="font-bold text-emerald-600">{formatPrice(fraisLivraison)}</span>
-                    </div>
-
-                    <div className="border-t border-stone-100 pt-3 flex justify-between items-center">
-                      <span className="text-sm font-extrabold text-stone-900">Total</span>
-                      <span className="text-lg font-black text-[#FF6B4A]">{formatPrice(totalPanier)}</span>
-                    </div>
-                  </div>
-
-                  {/* MOYEN DE PAIEMENT MOBILE */}
-                  <div className="mt-5 space-y-3">
-                    <h3 className="text-xs font-bold text-stone-900">Moyen de paiement mobile</h3>
-
-                    {/* WAVE */}
-                    <div
-                      onClick={() => setMoyenPaiement('wave')}
-                      className={`relative flex items-center justify-between rounded-2xl p-3.5 cursor-pointer transition border ${
-                        moyenPaiement === 'wave'
-                          ? 'bg-[#E3F6F5] border-[#13B5EA]'
-                          : 'bg-white border-stone-200 hover:bg-stone-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#13B5EA] text-white font-black text-xs shadow-sm">
-                          W
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-black text-stone-900">Wave</span>
-                            <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[9px] font-bold text-teal-700">0% frais</span>
-                          </div>
-                          <p className="text-xs font-medium text-stone-500">
-                            +221 {numeroTelephone}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className={`flex h-5 w-5 items-center justify-center rounded-full border ${
-                        moyenPaiement === 'wave'
-                          ? 'bg-[#004D40] border-[#004D40] text-white'
-                          : 'border-stone-300 bg-white'
-                      }`}>
-                        {moyenPaiement === 'wave' && <Check size={12} strokeWidth={3} />}
-                      </div>
-                    </div>
-
-                    {/* ORANGE MONEY */}
-                    <div
-                      onClick={() => setMoyenPaiement('om')}
-                      className={`relative flex items-center justify-between rounded-2xl p-3.5 cursor-pointer transition border ${
-                        moyenPaiement === 'om'
-                          ? 'bg-[#FFF3E0] border-[#FF6600]'
-                          : 'bg-white border-stone-200 hover:bg-stone-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FF6600] text-white font-black text-xs shadow-sm">
-                          OM
-                        </div>
-                        <div>
-                          <span className="text-sm font-black text-stone-900 block">Orange Money</span>
-                          <p className="text-xs font-medium text-stone-500">
-                            +221 {numeroTelephone}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className={`flex h-5 w-5 items-center justify-center rounded-full border ${
-                        moyenPaiement === 'om'
-                          ? 'bg-[#FF6600] border-[#FF6600] text-white'
-                          : 'border-stone-300 bg-white'
-                      }`}>
-                        {moyenPaiement === 'om' && <Check size={12} strokeWidth={3} />}
-                      </div>
-                    </div>
-
-                    {/* NUMÉRO DE TÉLÉPHONE */}
-                    <div className="pt-1">
-                      {!isEditingPhone ? (
-                        <button
-                          type="button"
-                          onClick={() => setIsEditingPhone(true)}
-                          className="flex items-center gap-1.5 text-[11px] font-bold text-[#0C3B4A] hover:underline"
-                        >
-                          <Smartphone size={13} />
-                          Changer le numéro ({numeroTelephone})
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-2 rounded-xl bg-white p-2 border border-stone-200">
-                          <span className="text-xs font-bold text-stone-500 pl-2">+221</span>
-                          <input
-                            type="tel"
-                            value={numeroTelephone}
-                            onChange={(e) => setNumeroTelephone(e.target.value)}
-                            placeholder="77 000 00 00"
-                            className="w-full text-xs font-bold text-stone-800 outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setIsEditingPhone(false)}
-                            className="rounded-lg bg-[#0C3B4A] px-2.5 py-1 text-[10px] font-bold text-white shrink-0"
-                          >
-                            OK
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                  </div>
-
-                </div>
-              )}
-            </div>
-
-            {/* BOUTON CONFIRMER LA COMMANDE */}
-            {panier.length > 0 && (
-              <div className="absolute bottom-16 left-4 right-4 z-20">
-                <button
-                  type="button"
-                  disabled={isOrdering}
-                  onClick={validerCommandeStatique}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FF6B4A] py-3.5 text-sm font-black text-white shadow-lg shadow-orange-500/25 transition hover:bg-[#E85A39] active:scale-95 disabled:opacity-60"
-                >
-                  <ShoppingBag size={18} />
-                  {isOrdering ? 'Validation...' : 'Confirmer la commande'}
-                </button>
-              </div>
-            )}
-
-         <AcheteurBottomNav/>
-
-          </div>
-        )}
-
       </div>
     </div>
   );

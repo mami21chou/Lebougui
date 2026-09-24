@@ -123,6 +123,18 @@ class Premium(models.Model):
     date_obtention = models.DateTimeField(null=True, blank=True)
     date_expiration = models.DateTimeField(null=True, blank=True) 
     statut = models.CharField(choices=Statut.choices, default=Statut.EN_ATTENTE, max_length=30)
+    
+    validation_auto = models.BooleanField(
+        default=False,
+        help_text="True si validé automatiquement à l'achat (pas de problème détecté)",
+    )
+    motif_validation = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Raison de la validation manuelle (signalements, révocation…)",
+    )
+
+    
     valide_par = models.ForeignKey(
         Utilisateur, 
         on_delete=models.SET_NULL, 
@@ -131,6 +143,8 @@ class Premium(models.Model):
         limit_choices_to={"role": Utilisateur.Role.ADMIN}, 
         related_name="premiums_valides"
     )
+    duree_mois = models.PositiveIntegerField(default=1)
+
 
     def __str__(self):
         return f"{self.fonction} - {self.utilisateur} ({self.statut})"

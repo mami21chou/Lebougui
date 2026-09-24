@@ -180,6 +180,31 @@ export const PublicationProvider = ({ children }) => {
     [estPecheur, chargerPublications, chargerMesPublications]
   );
 
+  // Le pêcheur active / désactive la disponibilité de son produit.
+  // On recharge la liste globale (forceRefresh) pour que les acheteurs
+  // voient tout de suite le nouveau statut.
+  const changerStatutProduit = useCallback(
+    async (id, statut) => {
+      if (!estPecheur()) {
+        return { success: false, error: 'Seul un pêcheur peut modifier un produit' };
+      }
+      try {
+        const response = await PublicationService.changerStatutProduit(id, statut);
+        await chargerPublications(true);
+        await chargerMesPublications();
+        return { success: true, data: response };
+      } catch (err) {
+        const message =
+          err.response?.data?.erreur ||
+          err.response?.data?.detail ||
+          err.message ||
+          'Erreur lors du changement de disponibilité';
+        return { success: false, error: message };
+      }
+    },
+    [estPecheur, chargerPublications, chargerMesPublications]
+  );
+
   const filtrerProduitsParCategorie = useCallback(
     (categorie) => {
       if (!categorie) return publications.produits;
@@ -276,6 +301,7 @@ export const PublicationProvider = ({ children }) => {
       creerProduit,
       creerInformation,
       publierDirectement,
+      changerStatutProduit,
       filtrerProduitsParCategorie,
       filtrerProduitsParNom,
       filtrerProduitsParPrix,
@@ -294,6 +320,7 @@ export const PublicationProvider = ({ children }) => {
       creerProduit,
       creerInformation,
       publierDirectement,
+      changerStatutProduit,
       filtrerProduitsParCategorie,
       filtrerProduitsParNom,
       filtrerProduitsParPrix,

@@ -1,15 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bell, Camera, Mic, Video, Wind, Droplets, Compass, MapPin,
-  Store, Package, ClipboardList, TrendingUp, Clock,
+  Camera, Mic, Video, Play, Pause,
+  Clock, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import AudioRecorderModal from '../../components/AudioRecorderModal';
-import UserMenu from '../../components/UserMenu';
+import PecheurHeader from '../../components/PecheurHeader';
+import PecheurBottomNav from '../../components/PecheurBottomNav';
 import { useAuth } from '../../context/AuthContext';
+import { useAudio } from '../../context/AudioContext';
 import { PublicationService } from '../../services/publicationService';
 
-// Vérifie si une date est aujourd'hui
+const IMAGES_SENEGAL = [
+  'https://i.pinimg.com/736x/ae/19/51/ae19510120cbb67b086df77dea2e170e.jpg',
+  'https://i.pinimg.com/1200x/4c/12/a8/4c12a86f3b74e807c3ce999653e5e39e.jpg',
+  'https://i.pinimg.com/1200x/2f/11/a7/2f11a76af1e91323208ff785b2140d83.jpg',
+  'https://i.pinimg.com/736x/25/56/9b/25569bf1becb4a347c0e490aaa301e99.jpg',
+  'https://i.pinimg.com/736x/f3/7e/e0/f37ee0edeb9e29cbfa8cfb04924fbd75.jpg',
+  'https://i.pinimg.com/1200x/19/94/12/199412425208b6fed7e1f43117c75876.jpg',
+];
+
+const FALLBACK_IMAGE = '/images/fallback.png';
+
 const estAujourdhui = (dateStr) => {
   if (!dateStr) return false;
   const d = new Date(dateStr);
@@ -24,12 +36,22 @@ const estAujourdhui = (dateStr) => {
 export default function PecheurDashboard() {
   const navigate = useNavigate();
   const { utilisateur } = useAuth();
+  const { currentId: audioEnCours, play: playAudio, pause: pauseAudio } = useAudio();
 
   const [showRecorder, setShowRecorder] = useState(false);
   const [produits, setProduits] = useState([]);
   const [informations, setInformations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pendingAudio, setPendingAudio] = useState(null);
+
+  const [currentImageIdx, setCurrentImageIdx] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentImageIdx((prev) => (prev + 1) % IMAGES_SENEGAL.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -41,7 +63,6 @@ export default function PecheurDashboard() {
 
         setProduits(produitsRes || []);
 
-        //  Garde uniquement les infos d'aujourd'hui, triées du plus récent au plus ancien
         const infosDuJour = (infosRes || [])
           .filter((info) => estAujourdhui(info.date_publication))
           .sort(
@@ -52,7 +73,7 @@ export default function PecheurDashboard() {
 
         setInformations(infosDuJour);
       } catch (err) {
-        console.error("Erreur de chargement des données du marché:", err);
+        console.error('Erreur de chargement des données du marché:', err);
       } finally {
         setLoading(false);
       }
@@ -63,21 +84,24 @@ export default function PecheurDashboard() {
   const requireAuthAction = (actionCallback) => {
     const token = localStorage.getItem('access_token');
     if (!token) {
-      window.location.href = `/connexion?redirect=${encodeURIComponent(window.location.pathname)}`;
+      window.location.href = `/connexion?redirect=${encodeURIComponent(
+        window.location.pathname
+      )}`;
       return;
     }
     actionCallback();
   };
 
-  const handleOpenRecorder = () => requireAuthAction(() => setShowRecorder(true));
+  const handleOpenRecorder = () =>
+    requireAuthAction(() => setShowRecorder(true));
 
-  // Audio seul → direction page publication
   const handleAudioCaptured = (blob) => {
     setShowRecorder(false);
-    navigate('/publication/nouvelle', { state: { audioBlob: blob, photoFile: null } });
+    navigate('/publication/nouvelle', {
+      state: { audioBlob: blob, photoFile: null },
+    });
   };
 
-  // Audio + photo : stocke le blob puis ouvre l'input photo
   const handleFinishAndAddPhoto = (blob) => {
     setShowRecorder(false);
     setPendingAudio(blob);
@@ -93,76 +117,105 @@ export default function PecheurDashboard() {
     e.target.value = '';
   };
 
+  const toggleProduitAudio = (e, produit) => {
+    e.stopPropagation();
+    if (!produit.audio) return;
+    const id = `pecheur-market-${produit.id}`;
+    if (audioEnCours === id) {
+      pauseAudio();
+    } else {
+      playAudio(id, produit.audio);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#F7F4EF] text-slate-800 font-sans pb-24 max-w-md mx-auto shadow-2xl relative">
-      {/* HEADER */}
-      <header className="p-5 flex items-center justify-between">
-        <div className="flex items-center gap-3 min-w-0">
-          <UserMenu
-            photo={utilisateur?.photo}
-            prenom={utilisateur?.prenom}
-            nom={utilisateur?.nom}
-            role="Pêcheur"
-            showName={false}
-          />
-          <div className="min-w-0">
-            <span className="text-[10px] font-bold tracking-widest text-teal-600 uppercase">
-              BONSOIR
-            </span>
-            <h1 className="text-lg font-black text-slate-900 leading-none truncate">
-              {(utilisateur?.prenom || 'PÊCHEUR').toUpperCase()}
-            </h1>
-          </div>
-        </div>
+    <div className="relative mx-auto min-h-screen max-w-md bg-[#F7F4EF] pb-24 font-sans text-slate-800 shadow-2xl">
+      {/* HEADER — sans vague, pour coller au carrousel */}
+      <PecheurHeader
+        title={`Bonjour, ${utilisateur?.prenom || 'Pêcheur'}`}
+        subtitle="Soumbédioune · Dakar"
+        rightIcon="bell"
+        showWave={false}
+        onRightIconClick={() =>
+          requireAuthAction(() => navigate('/pecheur/notifications'))
+        }
+      />
 
-        <button
-          onClick={() => requireAuthAction(() => alert('Notifications'))}
-          className="relative p-2.5 bg-white rounded-full border border-slate-200/80 shadow-sm text-slate-700 shrink-0"
-        >
-          <Bell size={18} />
-          <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-orange-500"></span>
-        </button>
-      </header>
+      <main className="space-y-6 px-5 pt-2">
 
-      <main className="px-5 space-y-6">
-        {/* Widget Météo Marine */}
-        <div className="bg-[#0F4C64] rounded-3xl p-5 text-white shadow-lg space-y-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[11px] font-semibold text-teal-200 tracking-wider uppercase">
-                SOUMBÉDIOUNE • DAKAR
+        {/* ==================== HERO IMMERSIF ==================== */}
+        {/* -mt-9 compense le padding bas (pb-9) du header bleu pour coller le carrousel */}
+        <section className="relative -mx-5 -mt-9 h-[calc(70vh-80px)] min-h-[620px] overflow-hidden">
+          {IMAGES_SENEGAL.map((img, idx) => (
+            <img
+              key={img}
+              src={img}
+              alt="Pêche sénégalaise"
+              className={`absolute inset-0 h-full w-full object-cover transition-all duration-[1500ms] ${
+                idx === currentImageIdx
+                  ? 'scale-100 opacity-100'
+                  : 'scale-105 opacity-0'
+              }`}
+            />
+          ))}
+
+          <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/70" />
+
+          <div className="absolute bottom-10 left-5 right-5">
+            <div className="max-w-[320px]">
+              <h2 className="text-3xl font-black leading-[1.05] text-white drop-shadow-lg">
+                La mer.
+                <br />
+                Le pêcheur.
+                <br />
+                Votre table.
+              </h2>
+              <p className="mt-3 max-w-[270px] text-xs leading-relaxed text-white/80">
+                Découvrez les produits frais directement auprès des pêcheurs.
               </p>
-              <h2 className="text-4xl font-extrabold mt-1">27°C</h2>
-              <p className="text-xs text-emerald-300 font-medium mt-1 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                Mer calme • bonne sortie
-              </p>
-            </div>
-            <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl">
-              <Compass className="text-teal-200" size={24} />
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/10 text-center">
-            <div className="bg-white/10 rounded-2xl p-2.5">
-              <Wind size={16} className="mx-auto text-teal-200 mb-1" />
-              <p className="text-xs font-bold">12 km/h</p>
-              <p className="text-[9px] text-slate-300">Vent</p>
-            </div>
-            <div className="bg-white/10 rounded-2xl p-2.5">
-              <Droplets size={16} className="mx-auto text-teal-200 mb-1" />
-              <p className="text-xs font-bold">78%</p>
-              <p className="text-[9px] text-slate-300">Humidité</p>
-            </div>
-            <div className="bg-white/10 rounded-2xl p-2.5">
-              <p className="text-xs font-bold mt-1">06:58</p>
-              <p className="text-[9px] text-slate-300">Marée</p>
-            </div>
-          </div>
-        </div>
+          <button
+            onClick={() =>
+              setCurrentImageIdx((prev) =>
+                prev === 0 ? IMAGES_SENEGAL.length - 1 : prev - 1
+              )
+            }
+            className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full border border-white/20 bg-black/20 p-2 text-white backdrop-blur-md"
+            aria-label="Image précédente"
+          >
+            <ChevronLeft size={18} />
+          </button>
 
-        {/* Bloc Publication Vocale */}
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/60 text-center space-y-4">
+          <button
+            onClick={() =>
+              setCurrentImageIdx((prev) => (prev + 1) % IMAGES_SENEGAL.length)
+            }
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-white/20 bg-black/20 p-2 text-white backdrop-blur-md"
+            aria-label="Image suivante"
+          >
+            <ChevronRight size={18} />
+          </button>
+
+          <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5">
+            {IMAGES_SENEGAL.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setCurrentImageIdx(idx)}
+                className={`h-1.5 rounded-full transition-all ${
+                  idx === currentImageIdx
+                    ? 'w-6 bg-[#FF6B4A]'
+                    : 'w-1.5 bg-white/60'
+                }`}
+                aria-label={`Image ${idx + 1}`}
+              />
+            ))}
+          </div>
+        </section>
+
+        {/* ==================== BLOC PUBLICATION VOCALE ==================== */}
+        <div className="space-y-4 rounded-3xl border border-slate-200/60 bg-white p-6 text-center shadow-sm">
           <h3 className="text-base font-bold text-slate-900">Publier</h3>
 
           <div className="flex items-center justify-center gap-6">
@@ -176,16 +229,16 @@ export default function PecheurDashboard() {
 
             <button
               onClick={() => requireAuthAction(() => setShowRecorder(true))}
-              className="p-3 bg-slate-100 rounded-full text-slate-600 hover:bg-slate-200 transition-colors"
+              className="rounded-full bg-slate-100 p-3 text-slate-600 transition-colors hover:bg-slate-200"
             >
               <Camera size={20} />
             </button>
 
-            <button onClick={handleOpenRecorder} className="relative group">
-              <div className="absolute -inset-2 bg-orange-500/20 rounded-full blur-sm group-hover:bg-orange-500/30 transition-all"></div>
-              <div className="relative w-20 h-20 bg-gradient-to-tr from-orange-500 to-amber-500 rounded-full flex flex-col items-center justify-center text-white shadow-lg shadow-orange-500/30 active:scale-95 transition-transform">
+            <button onClick={handleOpenRecorder} className="group relative">
+              <div className="absolute -inset-2 rounded-full bg-orange-500/20 blur-sm transition-all group-hover:bg-orange-500/30" />
+              <div className="relative flex h-20 w-20 flex-col items-center justify-center rounded-full bg-gradient-to-tr from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/30 transition-transform active:scale-95">
                 <Mic size={28} />
-                <span className="text-[9px] font-black uppercase tracking-wider mt-0.5">
+                <span className="mt-0.5 text-[9px] font-black uppercase tracking-wider">
                   WOLOF
                 </span>
               </div>
@@ -193,30 +246,34 @@ export default function PecheurDashboard() {
 
             <button
               onClick={() => requireAuthAction(() => setShowRecorder(true))}
-              className="p-3 bg-slate-100 rounded-full text-slate-600 hover:bg-slate-200 transition-colors"
+              className="rounded-full bg-slate-100 p-3 text-slate-600 transition-colors hover:bg-slate-200"
             >
               <Video size={20} />
             </button>
           </div>
 
-          <p className="text-xs font-bold text-slate-700 tracking-wide">Waxal ci wolof</p>
+          <p className="text-xs font-bold tracking-wide text-slate-700">
+            Waxal ci wolof
+          </p>
         </div>
 
         {/* ==================== INFORMATIONS DE PÊCHE — AUJOURD'HUI ==================== */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
               INFORMATIONS DE PÊCHE
             </h3>
-            <span className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-teal-600">
               Aujourd'hui
             </span>
           </div>
 
           {loading ? (
-            <p className="text-xs text-slate-400 italic">Chargement des alertes...</p>
+            <p className="text-xs italic text-slate-400">
+              Chargement des alertes...
+            </p>
           ) : informations.length === 0 ? (
-            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/60 text-center">
+            <div className="rounded-2xl border border-slate-200/60 bg-white p-4 text-center shadow-sm">
               <p className="text-xs text-slate-400">
                 Aucune information publiée aujourd'hui.
               </p>
@@ -225,24 +282,23 @@ export default function PecheurDashboard() {
             informations.map((info) => (
               <div
                 key={info.id}
-                className="bg-white rounded-2xl p-4 shadow-sm border-l-4 border-teal-500 border-y border-r border-slate-200/60 space-y-2"
+                className="space-y-2 rounded-2xl border-y border-r border-l-4 border-slate-200/60 border-l-teal-500 bg-white p-4 shadow-sm"
               >
-                {/* Zone + Heure */}
-                <div className="flex justify-between items-center gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-7 h-7 shrink-0 rounded-full bg-teal-600 text-white text-[10px] font-bold flex items-center justify-center">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-600 text-[10px] font-bold text-white">
                       {(info.pecheur_prenom?.[0] || 'P').toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <h4 className="text-sm font-bold text-slate-900 truncate">
+                      <h4 className="truncate text-sm font-bold text-slate-900">
                         {info.adresse || 'Zone de Pêche'}
                       </h4>
-                      <p className="text-[10px] text-slate-400 truncate">
+                      <p className="truncate text-[10px] text-slate-400">
                         {info.pecheur_prenom} {info.pecheur_nom}
                       </p>
                     </div>
                   </div>
-                  <span className="text-[10px] text-slate-400 shrink-0 flex items-center gap-1">
+                  <span className="flex shrink-0 items-center gap-1 text-[10px] text-slate-400">
                     <Clock size={10} />
                     {new Date(info.date_publication).toLocaleTimeString('fr-FR', {
                       hour: '2-digit',
@@ -251,17 +307,15 @@ export default function PecheurDashboard() {
                   </span>
                 </div>
 
-                {/* Transcription wolof uniquement */}
-                <div className="bg-slate-50 rounded-xl p-2.5 text-xs text-slate-700 italic border border-slate-100">
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs italic text-slate-700">
                   « {info.texte_transcrit || 'Aucune transcription'} »
                 </div>
 
-                {/* Lecteur audio */}
                 {info.audio && (
                   <audio
                     controls
                     src={info.audio}
-                    className="w-full h-9 rounded-lg"
+                    className="h-9 w-full rounded-lg"
                     preload="none"
                   />
                 )}
@@ -272,8 +326,8 @@ export default function PecheurDashboard() {
 
         {/* ==================== LE MARCHÉ DU JOUR ==================== */}
         <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
               LE MARCHÉ DU JOUR
             </h3>
             <button
@@ -285,84 +339,75 @@ export default function PecheurDashboard() {
           </div>
 
           {loading ? (
-            <p className="text-xs text-slate-400 italic">Chargement des produits...</p>
+            <p className="text-xs italic text-slate-400">
+              Chargement des produits...
+            </p>
           ) : produits.length === 0 ? (
-            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/60 text-center">
+            <div className="rounded-2xl border border-slate-200/60 bg-white p-4 text-center shadow-sm">
               <p className="text-xs text-slate-400">Aucun produit disponible.</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {produits.slice(0, 4).map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200/60"
-                >
-                  <div className="relative h-28 bg-slate-100">
-                    <img
-                      src={
-                        item.media ||
-                        item.image ||
-                        'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?w=400&auto=format&fit=crop&q=80'
-                      }
-                      alt={item.nom}
-                      className="w-full h-full object-cover"
-                    />
-                    <span className="absolute top-2 left-2 px-2 py-0.5 bg-white/90 backdrop-blur-md rounded-full text-[9px] font-bold uppercase text-teal-700">
-                      {item.categorie === 'fruit_de_mer' ? 'Fruit de mer' : 'Poisson'}
-                    </span>
-                  </div>
-                  <div className="p-3 space-y-1">
-                    <h4 className="text-xs font-bold text-slate-900 truncate">
-                      {item.nom}
-                    </h4>
-                    <p className="text-[10px] text-slate-500 flex items-center gap-1 truncate">
-                      <MapPin size={10} /> {item.adresse || 'Dakar'}
-                    </p>
-                    <div className="pt-1 flex items-baseline justify-between">
-                      <span className="text-xs font-black text-orange-500">
-                        {item.prix} FCFA
-                        <span className="text-[9px] text-slate-400 font-normal"> /kg</span>
-                      </span>
+              {produits.slice(0, 4).map((item) => {
+                const audioId = `pecheur-market-${item.id}`;
+                const isPlaying = audioEnCours === audioId;
+                const hasAudio = Boolean(item.audio);
+
+                return (
+                  <div
+                    key={item.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/acheteur/produit/${item.id}`)}
+                    onKeyDown={(e) =>
+                      e.key === 'Enter' &&
+                      navigate(`/acheteur/produit/${item.id}`)
+                    }
+                    className="group cursor-pointer overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm transition active:scale-[0.98]"
+                  >
+                    <div className="relative aspect-[4/5] w-full overflow-hidden bg-slate-100">
+                      <img
+                        src={item.media || item.image || FALLBACK_IMAGE}
+                        alt=""
+                        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = FALLBACK_IMAGE;
+                        }}
+                      />
+
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-black/40 to-transparent" />
+
+                      {hasAudio && (
+                        <button
+                          type="button"
+                          onClick={(e) => toggleProduitAudio(e, item)}
+                          aria-label={
+                            isPlaying ? 'Pause' : 'Lecture de la note vocale'
+                          }
+                          className={`absolute left-2 top-2 flex h-8 w-8 items-center justify-center rounded-full backdrop-blur-sm transition ${
+                            isPlaying
+                              ? 'bg-[#FF6B4A] text-white'
+                              : 'bg-black/50 text-white hover:bg-black/65'
+                          }`}
+                        >
+                          {isPlaying ? (
+                            <Pause size={13} fill="currentColor" />
+                          ) : (
+                            <Play size={13} fill="currentColor" />
+                          )}
+                        </button>
+                      )}
                     </div>
-                    <p className="text-[9px] text-slate-400 pt-0.5 truncate">
-                      {item.pecheur_prenom || item.pecheur_nom || 'Pêcheur'}
-                    </p>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
       </main>
 
-      {/* BOTTOM NAV */}
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200/80 px-6 py-3 flex justify-between items-center text-slate-400">
-        <button className="flex flex-col items-center gap-1 text-teal-600 font-bold">
-          <Store size={18} />
-          <span className="text-[9px]">Marché</span>
-        </button>
-        <button
-          onClick={() => requireAuthAction(() => navigate('/pecheur/publications'))}
-          className="flex flex-col items-center gap-1 hover:text-slate-700"
-        >
-          <Package size={18} />
-          <span className="text-[9px]">Publications</span>
-        </button>
-        <button
-          onClick={() => requireAuthAction(() => navigate('/pecheur/commandes'))}
-          className="flex flex-col items-center gap-1 hover:text-slate-700"
-        >
-          <ClipboardList size={18} />
-          <span className="text-[9px]">Commandes</span>
-        </button>
-        <button
-          onClick={() => requireAuthAction(() => navigate('/pecheur/ventes'))}
-          className="flex flex-col items-center gap-1 hover:text-slate-700"
-        >
-          <TrendingUp size={18} />
-          <span className="text-[9px]">Ventes</span>
-        </button>
-      </nav>
+      <PecheurBottomNav />
 
       {showRecorder && (
         <AudioRecorderModal

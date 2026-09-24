@@ -4,6 +4,7 @@ import { Search, Bell, Phone, Check, X, Package, User, MapPin } from 'lucide-rea
 import { useAuth } from '../../context/AuthContext';
 import { useCommandes } from '../../context/CommandeContext';
 import { CommandeService } from '../../services/commandeService';
+import PecheurBottomNav from '../../components/PecheurBottomNav';
 
 const formatPrice = (price) =>
   `${new Intl.NumberFormat('fr-FR').format(Number(price) || 0)} FCFA`;
@@ -28,7 +29,7 @@ export default function CommandesRecues() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filtre, setFiltre] = useState('toutes');
-  const [enCours, setEnCours] = useState(null); // id en cours de traitement
+  const [enCours, setEnCours] = useState(null);
 
   useEffect(() => {
     const load = async () => {
@@ -50,13 +51,12 @@ export default function CommandesRecues() {
 
   const commandes = useMemo(() => {
     const liste = [...(mesCommandes.liste || [])].sort(
-      (a, b) => new Date(b.date_commande || b.date || b.created_at) -
-                new Date(a.date_commande || a.date || a.created_at)
+      (a, b) =>
+        new Date(b.date_commande || b.date || b.created_at) -
+        new Date(a.date_commande || a.date || a.created_at)
     );
     if (filtre === 'recuperees') {
-      return liste.filter((c) =>
-        ['en_livraison', 'en_recherche_livreur', 'livree', 'payee'].includes(c.statut)
-      );
+      return liste.filter((c) => c.statut === 'en_livraison');
     }
     if (filtre === 'en_attente_paiement') {
       return liste.filter((c) => c.statut === 'en_attente_paiement');
@@ -68,14 +68,12 @@ export default function CommandesRecues() {
     const liste = mesCommandes.liste || [];
     return {
       toutes: liste.length,
-      recuperees: liste.filter((c) =>
-        ['en_livraison', 'en_recherche_livreur', 'livree', 'payee'].includes(c.statut)
-      ).length,
+      recuperees: liste.filter((c) => c.statut === 'en_livraison').length,
       en_attente_paiement: liste.filter((c) => c.statut === 'en_attente_paiement').length,
     };
   }, [mesCommandes.liste]);
 
-  // ---------- Actions ----------
+  // Actions
   const handleAccepter = async (cmd) => {
     setEnCours(cmd.id);
     try {
@@ -107,27 +105,26 @@ export default function CommandesRecues() {
     if (tel) window.location.href = `tel:${tel}`;
   };
 
-  // ---------- Helpers ----------
   const getStatutBadge = (statut) => {
     switch (statut) {
       case 'en_attente_pecheur':
-        return { label: 'NOUVELLE COMMANDE', bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' };
+        return { label: 'NOUVELLE COMMANDE', bg: 'bg-amber-50', text: 'text-amber-700' };
       case 'en_attente_paiement':
-        return { label: 'EN ATTENTE PAIEMENT', bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-500' };
+        return { label: 'EN ATTENTE PAIEMENT', bg: 'bg-orange-50', text: 'text-orange-700' };
       case 'payee':
-        return { label: 'PAYÉE', bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' };
+        return { label: 'PAYÉE', bg: 'bg-emerald-50', text: 'text-emerald-700' };
       case 'en_recherche_livreur':
-        return { label: 'EN RECHERCHE LIVREUR', bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-500' };
+        return { label: 'EN RECHERCHE LIVREUR', bg: 'bg-blue-50', text: 'text-blue-700' };
       case 'en_livraison':
-        return { label: 'EN LIVRAISON', bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-500' };
+        return { label: 'RÉCUPÉRÉE', bg: 'bg-blue-50', text: 'text-blue-700' };
       case 'livree':
-        return { label: 'LIVRÉE', bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' };
+        return { label: 'LIVRÉE', bg: 'bg-emerald-50', text: 'text-emerald-700'};
       case 'refusee':
-        return { label: 'REFUSÉE', bg: 'bg-rose-50', text: 'text-rose-700', dot: 'bg-rose-500' };
+        return { label: 'REFUSÉE', bg: 'bg-rose-50', text: 'text-rose-700'};
       case 'annulee':
-        return { label: 'ANNULÉE', bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' };
+        return { label: 'ANNULÉE', bg: 'bg-slate-100', text: 'text-slate-600'};
       default:
-        return { label: statut || 'INCONNU', bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' };
+        return { label: statut || 'INCONNU', bg: 'bg-slate-100', text: 'text-slate-600'};
     }
   };
 
@@ -188,7 +185,7 @@ export default function CommandesRecues() {
         </div>
 
         {/* LISTE */}
-        <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-24 pt-2">
+        <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-28 pt-2">
           {loading ? (
             <div className="py-12 text-center text-sm text-stone-500">Chargement...</div>
           ) : error ? (
@@ -218,7 +215,6 @@ export default function CommandesRecues() {
                 return (
                   <article key={cmd.id} className="overflow-hidden rounded-3xl border border-stone-100 bg-white p-4 shadow-sm">
 
-                    {/* Header : badge + montant */}
                     <div className="flex items-start justify-between">
                       <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${badge.bg} ${badge.text}`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
@@ -234,7 +230,6 @@ export default function CommandesRecues() {
 
                     <div className="my-3 border-t border-stone-100" />
 
-                    {/* ✅ AFFICHER TOUTES LES LIGNES */}
                     <div className="space-y-2">
                       {lignes.length === 0 && (
                         <p className="text-xs text-stone-400 italic">Détails indisponibles</p>
@@ -270,7 +265,6 @@ export default function CommandesRecues() {
                       })}
                     </div>
 
-                    {/* Infos client */}
                     {acheteur.prenom || acheteur.nom || cmd.adresse_livraison ? (
                       <div className="mt-3 rounded-2xl border border-stone-100 bg-stone-50 p-3 space-y-1">
                         {(acheteur.prenom || acheteur.nom) && (
@@ -293,7 +287,6 @@ export default function CommandesRecues() {
                       </div>
                     ) : null}
 
-                    {/* Total ligne */}
                     <div className="mt-3 flex items-center justify-between border-t border-stone-100 pt-3">
                       <span className="text-[11px] text-stone-400">
                         {lignes.length} produit{lignes.length > 1 ? 's' : ''} • {qteTotale} kg
@@ -303,7 +296,6 @@ export default function CommandesRecues() {
                       </span>
                     </div>
 
-                    {/* Actions */}
                     <div className="mt-3 flex items-center gap-2">
                       <button
                         onClick={() => handleAppeler(acheteur.telephone)}
@@ -320,7 +312,7 @@ export default function CommandesRecues() {
                             disabled={enTraitement}
                             className="flex-1 rounded-2xl bg-rose-50 px-4 py-3 text-xs font-bold text-rose-600 transition hover:bg-rose-100 disabled:opacity-60"
                           >
-                            Annuler
+                            Refuser
                           </button>
                           <button
                             onClick={() => handleAccepter(cmd)}
@@ -339,9 +331,21 @@ export default function CommandesRecues() {
                         </div>
                       )}
 
-                      {['payee', 'en_recherche_livreur'].includes(cmd.statut) && (
-                        <div className="flex-1 rounded-2xl bg-emerald-50 px-4 py-3 text-center text-xs font-bold text-emerald-700">
+                      {cmd.statut === 'payee' && (
+                        <div className="flex-1 rounded-2xl bg-amber-50 px-4 py-3 text-center text-xs font-bold text-amber-700">
                           Prêt à être remis au livreur
+                        </div>
+                      )}
+
+                      {cmd.statut === 'en_livraison' && (
+                        <div className="flex-1 rounded-2xl bg-blue-50 px-4 py-3 text-center text-xs font-bold text-blue-700">
+                          Récupérée par le livreur
+                        </div>
+                      )}
+
+                      {cmd.statut === 'livree' && (
+                        <div className="flex-1 rounded-2xl bg-emerald-50 px-4 py-3 text-center text-xs font-bold text-emerald-700">
+                          Commande livrée
                         </div>
                       )}
                     </div>
@@ -351,6 +355,8 @@ export default function CommandesRecues() {
             </div>
           )}
         </main>
+
+        <PecheurBottomNav />
       </div>
     </div>
   );

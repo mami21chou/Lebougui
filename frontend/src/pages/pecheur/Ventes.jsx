@@ -1,16 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Package, MapPin, Calendar, TrendingUp, TrendingDown, BarChart3, Clock, CheckCircle2 } from 'lucide-react';
+import {
+  Package, TrendingUp, BarChart3, CheckCircle2,
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCommandes } from '../../context/CommandeContext';
+import PecheurBottomNav from '../../components/PecheurBottomNav';
+
+const formatPrice = (p) =>
+  `${new Intl.NumberFormat('fr-FR').format(Number(p) || 0)} FCFA`;
 
 const Ventes = () => {
-  const { utilisateur, estPecheur } = useAuth();
+  const { estPecheur } = useAuth();
   const { mesCommandes, chargerMesCommandes, getStatistiquesPêcheur } = useCommandes();
   const navigate = useNavigate();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [periode, setPeriode] = useState('mois'); // 'jour', 'semaine', 'mois', 'annee'
+  const [periode, setPeriode] = useState('mois');
 
   useEffect(() => {
     const loadData = async () => {
@@ -32,48 +39,43 @@ const Ventes = () => {
 
   const statistiques = getStatistiquesPêcheur();
 
-  // Filtrer les commandes terminées
-  const commandesTerminees = mesCommandes.liste
-    .filter(cmd => cmd.statut?.toLowerCase() === 'terminee')
-    .sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
+  // Commandes livrées uniquement (= ventes réelles)
+  const commandesTerminees = (mesCommandes.liste || [])
+    .filter((cmd) => cmd.statut === 'livree')
+    .sort(
+      (a, b) =>
+        new Date(b.date_commande || b.date || b.created_at) -
+        new Date(a.date_commande || a.date || a.created_at)
+    );
 
-  const getMontantTotal = (commande) => {
-    const prix = commande.produit?.prix || 0;
-    const quantite = commande.quantite || 0;
-    return prix * quantite;
-  };
+  // Total d'une commande (multi-lignes)
+  const getMontantTotal = (commande) =>
+    (commande.lignes || []).reduce(
+      (sum, l) => sum + Number(l.prix_unitaire || 0) * Number(l.quantite || 0),
+      0
+    );
 
-  // Calculer les ventes par période
+  // Ventes par période
   const getVentesParPeriode = () => {
     const aujourdHui = new Date();
-    const result = {
-      aujourdHui: 0,
-      semaine: 0,
-      mois: 0,
-      annee: 0,
-    };
+    const result = { jour: 0, semaine: 0, mois: 0, annee: 0 };
 
-    commandesTerminees.forEach(cmd => {
-      const dateCmd = new Date(cmd.date || cmd.created_at);
+    commandesTerminees.forEach((cmd) => {
+      const dateCmd = new Date(cmd.date_commande || cmd.date || cmd.created_at);
       const montant = getMontantTotal(cmd);
 
-      // Aujourd'hui
       if (dateCmd.toDateString() === aujourdHui.toDateString()) {
-        result.aujourdHui += montant;
+        result.jour += montant;
       }
-
-      // Cette semaine
       const diffJours = (aujourdHui - dateCmd) / (1000 * 60 * 60 * 24);
-      if (diffJours <= 7) {
-        result.semaine += montant;
-      }
+      if (diffJours <= 7) result.semaine += montant;
 
-      // Ce mois
-      if (dateCmd.getMonth() === aujourdHui.getMonth() && dateCmd.getFullYear() === aujourdHui.getFullYear()) {
+      if (
+        dateCmd.getMonth() === aujourdHui.getMonth() &&
+        dateCmd.getFullYear() === aujourdHui.getFullYear()
+      ) {
         result.mois += montant;
       }
-
-      // Cette année
       if (dateCmd.getFullYear() === aujourdHui.getFullYear()) {
         result.annee += montant;
       }
@@ -84,344 +86,321 @@ const Ventes = () => {
 
   const ventesParPeriode = getVentesParPeriode();
 
-  // Produits les plus vendus
+  // Top produits
   const getProduitsPlusVendus = () => {
-    const produitsMap = new Map();
-    
-    commandesTerminees.forEach(cmd => {
-      const produitId = cmd.produit?.id || cmd.produit?.nom;
-      const produitNom = cmd.produit?.nom || 'Inconnu';
-      const quantite = cmd.quantite || 0;
-      const montant = getMontantTotal(cmd);
-
-      if (!produitsMap.has(produitId)) {
-        produitsMap.set(produitId, {
-          nom: produitNom,
-          quantite: 0,
-          montant: 0,
-          commandes: 0,
-        });
-      }
-
-      const produit = produitsMap.get(produitId);
-      produit.quantite += quantite;
-      produit.montant += montant;
-      produit.commandes += 1;
+    const map = new Map();
+    commandesTerminees.forEach((cmd) => {
+      (cmd.lignes || []).forEach((ligne) => {
+        const prod = ligne.produit_detail || {};
+        const key = prod.id || prod.nom || 'inconnu';
+        if (!map.has(key)) {
+          map.set(key, {
+            nom: prod.nom || 'Produit inconnu',
+            quantite: 0,
+            montant: 0,
+            commandes: 0,
+          });
+        }
+        const p = map.get(key);
+        p.quantite += Number(ligne.quantite || 0);
+        p.montant += Number(ligne.prix_unitaire || 0) * Number(ligne.quantite || 0);
+        p.commandes += 1;
+      });
     });
-
-    return Array.from(produitsMap.values())
-      .sort((a, b) => b.montant - a.montant)
-      .slice(0, 3);
+    return Array.from(map.values()).sort((a, b) => b.montant - a.montant).slice(0, 3);
   };
 
   const produitsPlusVendus = getProduitsPlusVendus();
 
-  // Client les plus fidèles
+  // Clients fidèles
   const getClientsFideles = () => {
-    const clientsMap = new Map();
-    
-    commandesTerminees.forEach(cmd => {
-      if (!cmd.acheteur) return;
-      
-      const clientId = cmd.acheteur.id;
-      const clientNom = `${cmd.acheteur.prenom || ''} ${cmd.acheteur.nom || ''}`.trim() || 'Anonyme';
-      const montant = getMontantTotal(cmd);
-
-      if (!clientsMap.has(clientId)) {
-        clientsMap.set(clientId, {
-          nom: clientNom,
-          telephone: cmd.acheteur.telephone,
+    const map = new Map();
+    commandesTerminees.forEach((cmd) => {
+      const acheteur = cmd.acheteur_detail || {};
+      const id = acheteur.id || cmd.acheteur;
+      if (!id) return;
+      const nom =
+        `${acheteur.prenom || ''} ${acheteur.nom || ''}`.trim() || 'Anonyme';
+      if (!map.has(id)) {
+        map.set(id, {
+          nom,
+          telephone: acheteur.telephone,
           montant: 0,
           commandes: 0,
         });
       }
-
-      const client = clientsMap.get(clientId);
-      client.montant += montant;
-      client.commandes += 1;
+      const c = map.get(id);
+      c.montant += getMontantTotal(cmd);
+      c.commandes += 1;
     });
-
-    return Array.from(clientsMap.values())
-      .sort((a, b) => b.montant - a.montant)
-      .slice(0, 3);
+    return Array.from(map.values()).sort((a, b) => b.montant - a.montant).slice(0, 3);
   };
 
   const clientsFideles = getClientsFideles();
 
-  if (!estPecheur()) {
-    return null;
-  }
+  if (!estPecheur()) return null;
 
   return (
-    <div className="min-h-screen bg-[#F7F4EF] text-slate-800 font-sans pb-28 max-w-md mx-auto shadow-2xl relative">
-      {/* Header */}
-      <header className="p-5 flex items-center justify-between">
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2.5 rounded-full bg-white shadow-sm border border-slate-200/80"
-        >
-          <ChevronLeft size={18} className="text-slate-600" />
-        </button>
-        
-        <div className="text-center">
-          <h1 className="text-lg font-bold text-slate-900">Mes ventes</h1>
-          <p className="text-xs text-slate-500">Statistiques et historique</p>
-        </div>
+    <div className="min-h-screen bg-stone-300 font-sans antialiased sm:flex sm:items-center sm:justify-center sm:py-6">
+      <div className="relative flex h-screen w-full max-w-md flex-col overflow-hidden bg-[#FAF6F0] sm:h-[880px] sm:max-h-[92vh] sm:rounded-[40px] sm:border-8 sm:border-stone-300 sm:shadow-2xl">
 
-        <button
-          onClick={() => navigate('/pecheur/accueil')}
-          className="p-2.5 rounded-full bg-primary text-white shadow-sm shadow-primary/25"
-        >
-          <TrendingUp size={18} />
-        </button>
-      </header>
+        {/* HEADER */}
+        <header className="flex shrink-0 items-center justify-between px-5 pt-6 pb-3">
+          <h1 className="text-2xl font-extrabold text-[#0C3B4A]">Mes Ventes</h1>
+          <button
+            onClick={() => navigate('/pecheur/accueil')}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-stone-700 shadow-sm"
+          >
+            <TrendingUp size={18} />
+          </button>
+        </header>
 
-      {/* Statistiques globales */}
-      <div className="px-5 mb-4">
-        <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-4 text-white shadow-lg shadow-orange-500/25">
-          <div className="flex justify-between items-center mb-2">
-            <div>
-              <p className="text-xs opacity-80">Chiffre d'affaires total</p>
-              <p className="text-2xl font-bold">{statistiques.ventesTotal.toLocaleString()} FCFA</p>
-            </div>
-            <div className="w-12 h-12 bg-white/20 rounded-xl d-flex align-center justify-center">
-              <TrendingUp size={24} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="bg-white/10 rounded-xl p-2 text-center">
-              <p className="font-bold">{statistiques.commandesTerminees}</p>
-              <p className="opacity-80">Commandes</p>
-            </div>
-            <div className="bg-white/10 rounded-xl p-2 text-center">
-              <p className="font-bold">{statistiques.produitsVendus} kg</p>
-              <p className="opacity-80">Vendus</p>
-            </div>
-          </div>
-        </div>
-      </div>
+        {/* MAIN scrollable */}
+        <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-28 pt-2 space-y-4">
 
-      {/* Filtre période */}
-      <div className="px-5 mb-4">
-        <div className="bg-white rounded-2xl p-2 shadow-sm border border-slate-200/60 flex gap-1">
-          <button
-            onClick={() => setPeriode('jour')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${
-              periode === 'jour' 
-                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25' 
-                : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            AUJOURD'HUI
-          </button>
-          <button
-            onClick={() => setPeriode('semaine')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${
-              periode === 'semaine' 
-                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25' 
-                : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            SEMAINE
-          </button>
-          <button
-            onClick={() => setPeriode('mois')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${
-              periode === 'mois' 
-                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25' 
-                : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            MOIS
-          </button>
-          <button
-            onClick={() => setPeriode('annee')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${
-              periode === 'annee' 
-                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25' 
-                : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            ANNÉE
-          </button>
-        </div>
-      </div>
-
-      {/* Ventes par période */}
-      <div className="px-5 mb-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/60">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-emerald-50 rounded-xl d-flex align-center justify-center">
-                <TrendingUp size={16} className="text-emerald-500" />
+          {/* Chiffre d'affaires */}
+          <div className="rounded-3xl bg-[#0C3B4A] p-5 text-white shadow-lg">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">
+                  Chiffre d'affaires total
+                </p>
+                <p className="text-3xl font-black mt-1">
+                  {formatPrice(statistiques.ventesTotal)}
+                </p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10">
+                <TrendingUp size={22} className="text-cyan-200" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-slate-900">{ventesParPeriode[periode].toLocaleString()} FCFA</p>
-            <p className="text-xs text-slate-500">Ventes {periode}</p>
-          </div>
-          <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/60">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-blue-50 rounded-xl d-flex align-center justify-center">
-                <BarChart3 size={16} className="text-blue-500" />
+            <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/10">
+              <div className="text-center">
+                <p className="text-lg font-black">{statistiques.commandesTerminees}</p>
+                <p className="text-[10px] text-cyan-200">Commandes livrées</p>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-black">
+                  {Number(statistiques.produitsVendus || 0).toFixed(0)} kg
+                </p>
+                <p className="text-[10px] text-cyan-200">Vendus</p>
               </div>
             </div>
-            <p className="text-2xl font-bold text-slate-900">{commandesTerminees.length}</p>
-            <p className="text-xs text-slate-500">Commandes {periode}</p>
           </div>
-        </div>
-      </div>
 
-      {/* Top produits */}
-      <div className="px-5 mb-4">
-        <h2 className="text-sm font-bold text-slate-800 mb-3">Produits les plus vendus</h2>
-        <div className="space-y-2">
-          {produitsPlusVendus.length > 0 ? (
-            produitsPlusVendus.map((produit, index) => (
-              <div
-                key={produit.nom}
-                className="bg-white rounded-xl p-3 shadow-sm border border-slate-200/60 flex items-center gap-3"
-              >
-                <div className="w-8 h-8 bg-orange-500 text-white rounded-full d-flex align-center justify-center font-bold text-sm">
-                  {index + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 text-ellipsis">{produit.nom}</p>
-                  <p className="text-xs text-slate-500">{produit.quantite} kg vendus</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-orange-500">{produit.montant.toLocaleString()} FCFA</p>
-                  <p className="text-xs text-slate-400">{produit.commandes} commandes</p>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="bg-white rounded-xl p-4 text-center text-slate-500 text-sm">
-              Aucun produit vendu
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Top clients */}
-      <div className="px-5 mb-4">
-        <h2 className="text-sm font-bold text-slate-800 mb-3">Clients les plus fidèles</h2>
-        <div className="space-y-2">
-          {clientsFideles.length > 0 ? (
-            clientsFideles.map((client, index) => (
-              <div
-                key={client.nom}
-                className="bg-white rounded-xl p-3 shadow-sm border border-slate-200/60 flex items-center gap-3"
-              >
-                <div className="w-8 h-8 bg-primary text-white rounded-full d-flex align-center justify-center font-bold text-sm">
-                  {index + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 text-ellipsis">{client.nom}</p>
-                  <p className="text-xs text-slate-500">{client.telephone}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-orange-500">{client.montant.toLocaleString()} FCFA</p>
-                  <p className="text-xs text-slate-400">{client.commandes} commandes</p>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="bg-white rounded-xl p-4 text-center text-slate-500 text-sm">
-              Aucun client fidèle
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Historique complet */}
-      <main className="px-5 space-y-4 flex-1">
-        <h2 className="text-sm font-bold text-slate-800">Historique des ventes</h2>
-        
-        {loading ? (
-          <div className="flex-1 d-flex align-center justify-center">
-            <p className="text-slate-500 text-sm">Chargement...</p>
-          </div>
-        ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-            <p className="text-red-700 text-sm">{error}</p>
-          </div>
-        ) : commandesTerminees.length === 0 ? (
-          <div className="bg-white rounded-3xl p-8 text-center shadow-sm border border-slate-200/60">
-            <div className="w-16 h-16 bg-slate-100 rounded-full d-flex align-center justify-center mx-auto mb-4">
-              <BarChart3 size={28} className="text-slate-400" />
-            </div>
-            <h3 className="font-bold text-slate-900 mb-2">Aucune vente enregistrée</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Vous n'avez pas encore de ventes.
-            </p>
-            <button
-              onClick={() => navigate('/pecheur/publication/nouvelle')}
-              className="py-2 px-6 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-orange-500/25"
-            >
-              Publier maintenant
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {commandesTerminees.slice(0, 10).map((cmd) => {
-              const montant = getMontantTotal(cmd);
-
+          {/* Filtres période */}
+          <div className="rounded-2xl bg-white p-2 shadow-sm border border-stone-100 flex gap-1">
+            {[
+              { id: 'jour', label: "Aujourd'hui" },
+              { id: 'semaine', label: 'Semaine' },
+              { id: 'mois', label: 'Mois' },
+              { id: 'annee', label: 'Année' },
+            ].map((tab) => {
+              const active = periode === tab.id;
               return (
-                <div
-                  key={cmd.id}
-                  className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200/60"
+                <button
+                  key={tab.id}
+                  onClick={() => setPeriode(tab.id)}
+                  className={`flex-1 rounded-xl px-2 py-2 text-[10px] font-bold transition-all ${
+                    active
+                      ? 'bg-[#0C3B4A] text-white'
+                      : 'text-stone-500 hover:bg-stone-100'
+                  }`}
                 >
-                  <div className="p-3 flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-100 rounded-xl overflow-hidden flex-0">
-                      {cmd.produit?.media ? (
-                        <img
-                          src={cmd.produit.media}
-                          alt={cmd.produit.nom}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Package size={18} className="text-slate-400 mx-auto my-2" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-bold text-slate-900 text-ellipsis">
-                        {cmd.produit?.nom || 'Produit inconnu'}
-                      </h4>
-                      <p className="text-xs text-orange-500 font-bold">
-                        {montant.toLocaleString()} FCFA
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <CheckCircle2 size={16} className="text-emerald-500 mb-1" />
-                      <p className="text-[9px] text-slate-400">
-                        {new Date(cmd.date || cmd.created_at).toLocaleDateString('fr-FR')}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                  {tab.label}
+                </button>
               );
             })}
           </div>
-        )}
-      </main>
 
-      {/* Navigation Bottom */}
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200/80 px-6 py-3 flex justify-between items-center text-slate-400">
-        <button onClick={() => navigate('/pecheur/accueil')} className="flex flex-col items-center gap-1 hover:text-orange-500">
-          <Package size={18} />
-          <span className="text-[9px]">Publications</span>
-        </button>
-        <button onClick={() => navigate('/pecheur/commandes')} className="flex flex-col items-center gap-1 hover:text-orange-500">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-2.5 5M7 13l2.5 5m6-5v6a2 2 0 11-4 0v-6m4 0V9a2 2 0 10-4 0v4.01" />
-          </svg>
-          <span className="text-[9px]">Commandes</span>
-        </button>
-        <button onClick={() => navigate('/pecheur/ventes')} className="flex flex-col items-center gap-1 text-orange-500 font-bold">
-          <TrendingUp size={18} />
-          <span className="text-[9px]">Ventes</span>
-        </button>
-      </nav>
+          {/* Résumé période */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-white p-3 shadow-sm border border-stone-100">
+              <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50">
+                <TrendingUp size={14} className="text-emerald-600" />
+              </div>
+              <p className="text-xl font-black text-[#0F2A4A]">
+                {formatPrice(ventesParPeriode[periode])}
+              </p>
+              <p className="text-[10px] text-stone-500 capitalize">
+                Ventes {periode}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-white p-3 shadow-sm border border-stone-100">
+              <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50">
+                <BarChart3 size={14} className="text-blue-600" />
+              </div>
+              <p className="text-xl font-black text-[#0F2A4A]">
+                {commandesTerminees.length}
+              </p>
+              <p className="text-[10px] text-stone-500 capitalize">
+                Commandes {periode}
+              </p>
+            </div>
+          </div>
+
+          {/* Top produits */}
+          <div className="space-y-2">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
+              Produits les plus vendus
+            </h2>
+            {produitsPlusVendus.length > 0 ? (
+              produitsPlusVendus.map((produit, index) => (
+                <div
+                  key={produit.nom}
+                  className="flex items-center gap-3 rounded-2xl border border-stone-100 bg-white p-3 shadow-sm"
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#FF6B4A] text-xs font-black text-white">
+                    {index + 1}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-[#0F2A4A]">
+                      {produit.nom}
+                    </p>
+                    <p className="text-[10px] text-stone-500">
+                      {produit.quantite} kg vendus
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-[#FF6B4A]">
+                      {formatPrice(produit.montant)}
+                    </p>
+                    <p className="text-[10px] text-stone-400">
+                      {produit.commandes} commandes
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-stone-100 bg-white p-4 text-center">
+                <p className="text-xs text-stone-500">Aucun produit vendu</p>
+              </div>
+            )}
+          </div>
+
+          {/* Top clients */}
+          <div className="space-y-2">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
+              Clients les plus fidèles
+            </h2>
+            {clientsFideles.length > 0 ? (
+              clientsFideles.map((client, index) => (
+                <div
+                  key={client.nom}
+                  className="flex items-center gap-3 rounded-2xl border border-stone-100 bg-white p-3 shadow-sm"
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0C3B4A] text-xs font-black text-white">
+                    {index + 1}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-[#0F2A4A]">
+                      {client.nom}
+                    </p>
+                    <p className="text-[10px] text-stone-500">
+                      {client.telephone}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-[#FF6B4A]">
+                      {formatPrice(client.montant)}
+                    </p>
+                    <p className="text-[10px] text-stone-400">
+                      {client.commandes} commandes
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-stone-100 bg-white p-4 text-center">
+                <p className="text-xs text-stone-500">Aucun client fidèle</p>
+              </div>
+            )}
+          </div>
+
+          {/* Historique */}
+          <div className="space-y-2">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
+              Historique des ventes
+            </h2>
+
+            {loading ? (
+              <div className="py-12 text-center text-sm text-stone-500">
+                Chargement...
+              </div>
+            ) : error ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-700">
+                {error}
+              </div>
+            ) : commandesTerminees.length === 0 ? (
+              <div className="rounded-3xl border border-stone-100 bg-white p-8 text-center shadow-sm">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-stone-100">
+                  <BarChart3 size={28} className="text-stone-400" />
+                </div>
+                <h3 className="mb-2 font-bold text-[#0F2A4A]">
+                  Aucune vente enregistrée
+                </h3>
+                <p className="mb-4 text-xs text-stone-500">
+                  Vos ventes apparaîtront ici après livraison.
+                </p>
+                <button
+                  onClick={() => navigate('/pecheur/publication/nouvelle')}
+                  className="rounded-xl bg-[#FF6B4A] px-5 py-2.5 text-xs font-bold text-white"
+                >
+                  Publier maintenant
+                </button>
+              </div>
+            ) : (
+              commandesTerminees.slice(0, 10).map((cmd) => {
+                const montant = getMontantTotal(cmd);
+                const premier = cmd.lignes?.[0]?.produit_detail || {};
+
+                return (
+                  <div
+                    key={cmd.id}
+                    className="overflow-hidden rounded-2xl border border-stone-100 bg-white shadow-sm"
+                  >
+                    <div className="flex items-center gap-3 p-3">
+                      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-stone-100">
+                        {premier.media ? (
+                          <img
+                            src={premier.media} 
+                            alt={premier.nom}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center">
+                            <Package size={18} className="text-stone-400" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="truncate text-sm font-bold text-[#0F2A4A]">
+                          {premier.nom || 'Produit inconnu'}
+                          {cmd.lignes?.length > 1 && (
+                            <span className="ml-1 text-[10px] font-normal text-stone-400">
+                              +{cmd.lignes.length - 1}
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-xs font-bold text-[#FF6B4A]">
+                          {formatPrice(montant)}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <CheckCircle2 size={14} className="text-emerald-500" />
+                        <p className="mt-0.5 text-[9px] text-stone-400">
+                          {new Date(cmd.date_commande || cmd.created_at).toLocaleDateString('fr-FR')}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </main>
+
+        <PecheurBottomNav />
+      </div>
     </div>
   );
 };

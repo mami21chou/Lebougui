@@ -5,12 +5,11 @@ Fichier : serializers.py
 
 import uuid
 from rest_framework import serializers
-from utilisateurs.models import Premium
+from utilisateurs.models import Premium, ProfilPecheur, ProfilLivreur, Vehicule
 from publications.models import Produit
 from publications.serializers import ProduitSerializer
 from .models import Commande, ProduitCommande, Note, Alerte, Livraison
-
-
+from utilisateurs.models import Utilisateur  
 # =========================================================
 # COMMANDE — LECTURE
 # =========================================================
@@ -25,21 +24,6 @@ class ProduitCommandeSerializer(serializers.ModelSerializer):
         read_only_fields = ["prix_unitaire"]
 
 
-class CommandeSerializer(serializers.ModelSerializer):
-    """Serializer de LECTURE uniquement (affichage d'une commande existante)."""
-    lignes = ProduitCommandeSerializer(many=True, read_only=True)
-    nom_acheteur = serializers.CharField(source="acheteur.nom", read_only=True)
-    nom_pecheur = serializers.CharField(source="pecheur.nom", read_only=True)
-
-    class Meta:
-        model = Commande
-        fields = [
-            "id", "numero", "acheteur", "nom_acheteur", "pecheur", "nom_pecheur",
-            "statut", "adresse_livraison", "latitude_livraison", "longitude_livraison",
-            "distance_km", "frais_livraison", "date_commande", "date_limite_confirmation",
-            "lignes",
-        ]
-        read_only_fields = fields  # jamais utilisé en écriture, voir CommandeCreateSerializer
 
 
 # =========================================================
@@ -72,11 +56,13 @@ class CommandeCreateSerializer(serializers.Serializer):
         return lignes
 
     def validate(self, attrs):
-        produits = Produit.objects.filter(
-            pk__in=[l["produit_id"] for l in attrs["lignes"]]
-        ).select_related("pecheur")
+        produits = list(
+            Produit.objects.filter(
+                pk__in=[l["produit_id"] for l in attrs["lignes"]]
+            ).select_related("pecheur")
+        )
 
-        if produits.count() != len(attrs["lignes"]):
+        if len(produits) != len(attrs["lignes"]):
             raise serializers.ValidationError("Un ou plusieurs produits n'existent pas.")
 
         if len({p.pecheur_id for p in produits}) > 1:
@@ -85,10 +71,18 @@ class CommandeCreateSerializer(serializers.Serializer):
                 "Séparez votre panier par pêcheur avant de commander."
             )
 
-        for ligne in attrs["lignes"]:
-            produit = next(p for p in produits if p.id == ligne["produit_id"])
-            if produit.statut != Produit.Statut.DISPONIBLE:
-                raise serializers.ValidationError(f"Le produit '{produit.nom}' n'est plus disponible.")
+        # Disponibilité : un produit désactivé par le pêcheur (statut = rupture)
+        # ne peut plus être commandé. On les liste TOUS d'un coup et on renvoie
+        # leurs ids pour que le panier puisse les signaler à l'acheteur.
+        indisponibles = [p for p in produits if p.statut != Produit.Statut.DISPONIBLE]
+        if indisponibles:
+            noms = ", ".join(f"« {p.nom} »" for p in indisponibles)
+            raise serializers.ValidationError({
+                "non_field_errors": [
+                    f"Produit(s) indisponible(s) : {noms}. Retirez-les de votre panier."
+                ],
+                "produits_indisponibles": [p.id for p in indisponibles],
+            })
 
         attrs["_produits"] = {p.id: p for p in produits}
         return attrs
@@ -179,22 +173,64 @@ class RegrouperCommandesLivraisonSerializer(serializers.Serializer):
         return value
 
 
+
+
+
+
+class UtilisateurMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Utilisateur
+        fields = ["id", "prenom", "nom", "telephone", "role"]
+
+
+class CommandeSerializer(serializers.ModelSerializer):
+    """Serializer de LECTURE d'une commande."""
+    lignes = ProduitCommandeSerializer(many=True, read_only=True)
+    acheteur_detail = UtilisateurMiniSerializer(source="acheteur", read_only=True)
+    nom_acheteur = serializers.CharField(source="acheteur.nom", read_only=True)
+    nom_pecheur = serializers.CharField(source="pecheur.nom", read_only=True)
+    telephone_pecheur = serializers.CharField(source="pecheur.telephone", read_only=True)
+
+    class Meta:
+        model = Commande
+        fields = [
+            "id", "numero",
+            "acheteur", "acheteur_detail", "nom_acheteur",
+            "pecheur", "nom_pecheur", "telephone_pecheur",
+            "statut", "adresse_livraison", "latitude_livraison", "longitude_livraison",
+            "distance_km", "frais_livraison",
+            "date_commande", "date_limite_confirmation",
+            "lignes",
+        ]
+        read_only_fields = fields
+
+
 class LivraisonSerializer(serializers.ModelSerializer):
     commandes_detail = CommandeSerializer(source="commandes", many=True, read_only=True)
     nom_livreur = serializers.SerializerMethodField()
+    telephone_livreur = serializers.SerializerMethodField()
 
     class Meta:
         model = Livraison
         fields = [
-            "id", "livreur", "nom_livreur", "commandes", "commandes_detail",
-            "statut", "tarif_livraison", "itineraire", "date_livraison",
+            "id", "livreur", "nom_livreur", "telephone_livreur",
+            "commandes", "commandes_detail",
+            "statut", "tarif_livraison", "itineraire",
+            "position_latitude", "position_longitude", "position_updated_at",
+            "date_acceptation", "date_recuperation", "date_livraison",
         ]
-        read_only_fields = ["livreur", "date_livraison"]
+        read_only_fields = ["livreur", "date_acceptation", "date_recuperation", "date_livraison"]
 
     def get_nom_livreur(self, livraison):
-        if livraison.livreur is None:
+        if not livraison.livreur:
             return None
-        return livraison.livreur.utilisateur.nom
+        u = livraison.livreur.utilisateur
+        return f"{u.prenom} {u.nom}".strip() or u.telephone
+
+    def get_telephone_livreur(self, livraison):
+        if not livraison.livreur:
+            return None
+        return getattr(livraison.livreur.utilisateur, "telephone", None)    
 
 
 # =========================================================
@@ -255,3 +291,212 @@ class AlerteSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data["acheteur"] = self.context["request"].user
         return super().create(validated_data)
+
+
+
+
+
+# =========================================================
+# ADMIN — SERIALIZERS DE LECTURE & MODÉRATION
+# =========================================================
+
+from utilisateurs.models import ProfilPecheur, ProfilLivreur, Vehicule
+from django.db.models import Count
+
+
+class AdminUtilisateurSerializer(serializers.ModelSerializer):
+    """
+    Serializer complet pour l'admin : profil + premium + signalements + véhicule.
+    Utilisé dans /admin/utilisateurs/ pour afficher la liste complète.
+    """
+    profil_pecheur = serializers.SerializerMethodField()
+    profil_livreur = serializers.SerializerMethodField()
+    premiums = serializers.SerializerMethodField()
+    signalements_recus = serializers.SerializerMethodField()
+    premium_actif = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Utilisateur
+        fields = [
+            "id", "prenom", "nom", "telephone", "email", "adresse", "role",
+            "date_inscription", "is_active",
+            "profil_pecheur", "profil_livreur",
+            "premiums", "premium_actif", "signalements_recus",
+        ]
+
+    def get_profil_pecheur(self, obj):
+        try:
+            p = obj.profil_pecheur
+            return {
+                "est_verifie": p.est_verifie,
+                "documents_pecheur": (
+                    self.context["request"].build_absolute_uri(p.documents_pecheur.url)
+                    if p.documents_pecheur
+                    else None
+                ),
+            }
+        except ProfilPecheur.DoesNotExist:
+            return None
+
+    def get_profil_livreur(self, obj):
+        try:
+            p = obj.profil_livreur
+            return {
+                "est_verifie": p.est_verifie,
+                "disponible": p.disponible,
+                "document_verification": (
+                    self.context["request"].build_absolute_uri(p.document_verification.url)
+                    if p.document_verification
+                    else None
+                ),
+                "vehicule": (
+                    {
+                        "id": p.vehicule.id,
+                        "type": p.vehicule.type_vehicule,
+                        "type_display": p.vehicule.get_type_vehicule_display(),
+                        "immatriculation": p.vehicule.immatriculation,
+                        "est_frigorifie": p.vehicule.est_frigorifie,
+                    }
+                    if p.vehicule
+                    else None
+                ),
+            }
+        except ProfilLivreur.DoesNotExist:
+            return None
+
+    def get_premiums(self, obj):
+        return [
+            {
+                "id": p.id,
+                "fonction": p.fonction,
+                "fonction_display": p.get_fonction_display(),
+                "statut": p.statut,
+                "date_obtention": p.date_obtention,
+                "date_expiration": p.date_expiration,
+            }
+            for p in obj.status_premium.all().order_by("-date_obtention")
+        ]
+
+    def get_premium_actif(self, obj):
+        """True si l'utilisateur a au moins un Premium actif."""
+        return obj.status_premium.filter(statut=Premium.Statut.ACTIF).exists()
+
+    def get_signalements_recus(self, obj):
+        """
+        Nombre de signalements = notes avec 1 ou 2 étoiles reçues.
+        Utilisé pour la révocation automatique des badges.
+        """
+        return Note.objects.filter(cible=obj, etoile__lte=2).count()
+
+
+class AdminPremiumSerializer(serializers.ModelSerializer):
+    """Serializer Premium avec détails utilisateur pour l'admin."""
+    utilisateur_detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Premium
+        fields = [
+            "id", "fonction", "statut",
+            "date_obtention", "date_expiration",
+            "utilisateur", "utilisateur_detail",
+            "valide_par",
+        ]
+
+    def get_utilisateur_detail(self, obj):
+        u = obj.utilisateur
+        return {
+            "id": u.id,
+            "nom": f"{u.prenom} {u.nom}".strip(),
+            "telephone": u.telephone,
+            "role": u.role,
+            "photo": (
+                self.context["request"].build_absolute_uri(u.photo.url)
+                if getattr(u, "photo", None)
+                else None
+            ),
+        }
+
+
+class AdminVehiculeSerializer(serializers.ModelSerializer):
+    """Véhicule avec info du livreur assigné."""
+    livreur_detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Vehicule
+        fields = [
+            "id", "type_vehicule", "immatriculation",
+            "est_frigorifie", "livreur_detail",
+        ]
+
+    def get_livreur_detail(self, obj):
+        try:
+            livreur = obj.livreur
+            u = livreur.utilisateur
+            return {
+                "id": u.id,
+                "nom": f"{u.prenom} {u.nom}".strip(),
+                "telephone": u.telephone,
+                "est_verifie": livreur.est_verifie,
+                "disponible": livreur.disponible,
+            }
+        except ProfilLivreur.DoesNotExist:
+            return None
+
+
+class AdminSignalementSerializer(serializers.ModelSerializer):
+    """
+    Signalement = note basse (1 ou 2 étoiles).
+    Utilisé pour la modération et la révocation des badges.
+    """
+    auteur_detail = serializers.SerializerMethodField()
+    cible_detail = serializers.SerializerMethodField()
+    commande_numero = serializers.CharField(source="commande.numero", read_only=True)
+    traite_par_detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Note
+        fields = [
+            "id", "etoile", "commentaire", "date",
+            "commande", "commande_numero",
+            "auteur_detail", "cible_detail",
+            "traite", "date_traitement", "action_prise",
+            "traite_par", "traite_par_detail",
+        ]
+
+    def get_auteur_detail(self, obj):
+        if not obj.auteur:
+            return None
+        return {
+            "id": obj.auteur.id,
+            "nom": f"{obj.auteur.prenom} {obj.auteur.nom}".strip(),
+            "telephone": obj.auteur.telephone,
+            "role": obj.auteur.role,
+        }
+
+    def get_cible_detail(self, obj):
+        if not obj.cible:
+            return None
+        return {
+            "id": obj.cible.id,
+            "nom": f"{obj.cible.prenom} {obj.cible.nom}".strip(),
+            "telephone": obj.cible.telephone,
+            "role": obj.cible.role,
+        }
+
+    def get_traite_par_detail(self, obj):
+        if not obj.traite_par:
+            return None
+        return {
+            "id": obj.traite_par.id,
+            "nom": f"{obj.traite_par.prenom} {obj.traite_par.nom}".strip(),
+        }
+
+class AdminUtilisateurARevoquerSerializer(serializers.ModelSerializer):
+    """
+    Utilisateur (pêcheur/livreur) ayant 2+ signalements → badge à révoquer.
+    """
+    signalements = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Utilisateur
+        fields = ["id", "prenom", "nom", "telephone", "role", "signalements"]

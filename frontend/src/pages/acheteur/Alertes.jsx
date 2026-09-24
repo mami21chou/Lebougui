@@ -1,23 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Plus, Trash2, AlertCircle, CheckCircle, XCircle, Clock, Fish, Star, MapPin, ArrowLeft } from 'lucide-react';
+import {
+  Bell, Plus, Trash2, CheckCircle, XCircle,
+  Fish, Star, MapPin, Power, X,
+} from 'lucide-react';
 import { useCommandes } from '../../context/CommandeContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePublications } from '../../context/PublicationContext';
-import Button from '../../components/Button';
-import Card from '../../components/Card';
-import Badge from '../../components/Badge';
-import Input from '../../components/Input';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import AcheteurHeader from '../../components/AcheteurHeader';
+import AcheteurBottomNav from '../../components/AcheteurBottomNav';
+import useCartCount from '../../hooks/useCartCount';
 
 export default function Alertes() {
   const navigate = useNavigate();
-  const { estAuthentifie, estPremium } = useAuth();
+  const { estPremium } = useAuth();
   const { alertes, chargerAlertes, creerAlerte, desactiverAlerte, supprimerAlerte } = useCommandes();
   const { publications } = usePublications();
+  const cartCount = useCartCount();
 
   const [nouvelleAlerte, setNouvelleAlerte] = useState({ nomPoisson: '', zone: '' });
-  const [afficherFormulaire, setAfficherFormulaire] = useState(false);
+  const [afficherModal, setAfficherModal] = useState(false);
   const [filtreStatut, setFiltreStatut] = useState('active');
   const [chargement, setChargement] = useState(false);
   const [erreur, setErreur] = useState(null);
@@ -29,18 +31,13 @@ export default function Alertes() {
       navigate('/connexion');
       return;
     }
+    chargerAlertes();
+  }, [navigate, chargerAlertes]);
 
-    if (estAuthentifie()) {
-      chargerAlertes();
-    }
-  }, [navigate, estAuthentifie, chargerAlertes]);
-
-  // Récupérer les poissons disponibles pour l'autocomplétion
-  const poissonsDisponibles = [...new Set(publications.produits.map(p => p.nom))].filter(Boolean);
+  const poissonsDisponibles = [...new Set((publications.produits || []).map((p) => p.nom))].filter(Boolean);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (!nouvelleAlerte.nomPoisson.trim()) {
       setErreur('Veuillez indiquer un nom de poisson');
       return;
@@ -50,19 +47,15 @@ export default function Alertes() {
     setErreur(null);
 
     try {
-      const result = await creerAlerte(
-        nouvelleAlerte.nomPoisson,
-        null,
-        null
-      );
+      const result = await creerAlerte(nouvelleAlerte.nomPoisson, null, null);
 
       if (result.success) {
         setNouvelleAlerte({ nomPoisson: '', zone: '' });
-        setAfficherFormulaire(false);
-        setSucces('Alerte créée avec succès! Vous serez notifié quand ce produit sera disponible.');
-        setTimeout(() => setSucces(null), 5000);
+        setAfficherModal(false);
+        setSucces('Alerte créée avec succès !');
+        setTimeout(() => setSucces(null), 3000);
       } else {
-        setErreur(result.error || 'Erreur lors de la création de l\'alerte');
+        setErreur(result.error || "Erreur lors de la création de l'alerte");
       }
     } catch (err) {
       setErreur(err.message || 'Une erreur est survenue');
@@ -72,10 +65,10 @@ export default function Alertes() {
   };
 
   const handleDelete = async (alerteId) => {
-    if (window.confirm('Voulez-vous vraiment supprimer cette alerte?')) {
+    if (window.confirm('Voulez-vous vraiment supprimer cette alerte ?')) {
       try {
         await supprimerAlerte(alerteId);
-        setSucces('Alerte supprimée avec succès');
+        setSucces('Alerte supprimée');
         setTimeout(() => setSucces(null), 3000);
       } catch (err) {
         setErreur(err.message || 'Erreur lors de la suppression');
@@ -85,374 +78,279 @@ export default function Alertes() {
 
   const handleToggleStatut = async (alerte) => {
     try {
-      const newStatut = alerte.statut === 'active' ? 'inactive' : 'active';
       await desactiverAlerte(alerte.id);
-      setSucces(`Alerte ${newStatut === 'active' ? 'activée' : 'désactivée'} avec succès`);
+      setSucces("Statut de l'alerte mis à jour");
       setTimeout(() => setSucces(null), 3000);
     } catch (err) {
       setErreur(err.message || 'Erreur lors de la mise à jour');
     }
   };
 
-  const filteredAlertes = alertes.liste.filter(alerte => {
+  const filteredAlertes = (alertes?.liste || []).filter((alerte) => {
     if (filtreStatut === 'toutes') return true;
     return alerte.statut?.toLowerCase() === filtreStatut?.toLowerCase();
   });
 
-  const getStatutLabel = (statut) => {
-    switch (statut) {
-      case 'active': return 'Active';
-      case 'inactive': return 'Inactive';
-      default: return statut;
-    }
-  };
-
-  const getStatutColor = (statut) => {
-    switch (statut) {
-      case 'active': return 'success';
-      case 'inactive': return 'gray';
-      default: return 'gray';
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-[#F7F4EF] p-4 md:p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="d-flex align-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
-              Alertes Premium
-            </h1>
-            <p className="text-gray-600">
-              {estPremium() 
-                ? 'Créez des alertes pour être notifié quand vos produits préférés sont disponibles' 
-                : 'Souscrivez à l\'offre Premium pour créer des alertes personnalisées'
-              }
-            </p>
-          </div>
+    <div className="min-h-screen bg-stone-300 font-sans antialiased sm:flex sm:items-center sm:justify-center sm:py-6">
+      <div className="relative flex h-screen w-full max-w-md flex-col overflow-hidden bg-[#FAF6F0] sm:h-[880px] sm:max-h-[92vh] sm:rounded-[40px] sm:border-8 sm:border-stone-300 sm:shadow-2xl">
+
+        {/* HEADER HÉRITÉ */}
+        <AcheteurHeader
+          title="Mes Alertes"
+          subtitle={estPremium() ? 'Suivi en temps réel' : 'Passez Premium pour activer'}
+          cartCount={cartCount}
+          showSearch={false}
+        />
+
+        {/* BOUTON ACTION SOUS LE HEADER */}
+        <div className="flex justify-end px-5 pt-3 pb-1 shrink-0">
           {!estPremium() ? (
-            <Button
-              variant="primary"
-              onClick={() => navigate('/acheteur/premium')}
-              className="d-flex align-center gap-2"
-            >
-              <Star className="w-4 h-4" />
-              <span>Devenir Premium</span>
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              onClick={() => setAfficherFormulaire(!afficherFormulaire)}
-              className="d-flex align-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Nouvelle alerte</span>
-            </Button>
-          )}
-        </div>
-
-        {/* Messages */}
-        {erreur && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 d-flex align-center gap-3">
-            <XCircle className="text-red-500 w-5 h-5 flex-0" />
-            <p className="text-red-700 flex-1">{erreur}</p>
             <button
-              onClick={() => setErreur(null)}
-              className="bg-transparent border-none text-red-500 cursor-pointer hover:text-red-700"
+              type="button"
+              onClick={() => navigate('/acheteur/premium')}
+              className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-amber-600"
             >
-              Fermer
+              <Star size={13} fill="currentColor" />
+              <span>Premium</span>
             </button>
-          </div>
-        )}
-
-        {succes && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 d-flex align-center gap-3">
-            <CheckCircle className="text-green-500 w-5 h-5 flex-0" />
-            <p className="text-green-700 flex-1">{succes}</p>
-          </div>
-        )}
-
-        {/* Formulaire de création d'alerte */}
-        {afficherFormulaire && estPremium() && (
-          <Card className="mb-6 border border-gray-100">
-            <Card.Body className="p-4">
-              <h2 className="font-bold text-gray-900 text-lg mb-4">
-                Créer une nouvelle alerte
-              </h2>
-              <form onSubmit={handleSubmit}>
-                <div className="mb-4">
-                  <Input
-                    label="Nom du poisson"
-                    placeholder="Ex: Thiof, Capitaine, Crevettes..."
-                    value={nouvelleAlerte.nomPoisson}
-                    onChange={(e) => setNouvelleAlerte({ ...nouvelleAlerte, nomPoisson: e.target.value })}
-                    required
-                    error={erreur?.includes('poisson') ? erreur : null}
-                  />
-                  <div className="mt-2">
-                    <datalist id="poissons">
-                      {poissonsDisponibles.map((poisson, index) => (
-                        <option key={index} value={poisson} />
-                      ))}
-                    </datalist>
-                  </div>
-                </div>
-                <div className="mb-4">
-                  <Input
-                    label="Zone (facultatif)"
-                    placeholder="Ex: Soumbédioune, Dakar..."
-                    value={nouvelleAlerte.zone}
-                    onChange={(e) => setNouvelleAlerte({ ...nouvelleAlerte, zone: e.target.value })}
-                  />
-                </div>
-                <div className="d-flex gap-2">
-                  <Button
-                    variant="primary"
-                    type="submit"
-                    loading={chargement}
-                    disabled={chargement}
-                  >
-                    Créer l'alerte
-                  </Button>
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onClick={() => {
-                      setAfficherFormulaire(false);
-                      setNouvelleAlerte({ nomPoisson: '', zone: '' });
-                      setErreur(null);
-                    }}
-                  >
-                    Annuler
-                  </Button>
-                </div>
-              </form>
-            </Card.Body>
-          </Card>
-        )}
-
-        {/* Non premium - Message d'incitation */}
-        {!estPremium() && !estPremium() && (
-          <Card className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200">
-            <Card.Body className="p-6 text-center">
-              <div className="w-16 h-16 bg-amber-100 rounded-full d-flex align-center justify-center mx-auto mb-4">
-                <Star className="text-amber-500 w-8 h-8" />
-              </div>
-              <h3 className="font-bold text-gray-900 text-xl mb-2">
-                Passez Premium!
-              </h3>
-              <p className="text-gray-600 text-sm mb-4 max-w-400 mx-auto">
-                Avec l'abonnement Premium, recevez des notifications instantanées par WhatsApp 
-                dès qu'un pêcheur publie le produit que vous recherchez. Ne manquez plus jamais 
-                les meilleures prises!
-              </p>
-              <Button
-                variant="primary"
-                onClick={() => navigate('/acheteur/premium')}
-                className="d-flex align-center gap-2 mx-auto"
-              >
-                <Star className="w-4 h-4" />
-                <span>Souscrire à Premium</span>
-              </Button>
-            </Card.Body>
-          </Card>
-        )}
-
-        {/* Filtres */}
-        <div className="bg-white rounded-xl shadow-sm p-4 mb-6 border border-gray-100">
-          <div className="d-flex gap-2">
-            <Button
-              variant={filtreStatut === 'active' ? 'primary' : 'outline'}
-              size="sm"
-              onClick={() => setFiltreStatut('active')}
-              className="d-flex align-center gap-2"
-            >
-              <CheckCircle className="w-4 h-4" />
-              <span>Active ({alertes.liste.filter(a => a.statut === 'active').length})</span>
-            </Button>
-            <Button
-              variant={filtreStatut === 'inactive' ? 'primary' : 'outline'}
-              size="sm"
-              onClick={() => setFiltreStatut('inactive')}
-              className="d-flex align-center gap-2"
-            >
-              <XCircle className="w-4 h-4" />
-              <span>Inactive ({alertes.liste.filter(a => a.statut === 'inactive').length})</span>
-            </Button>
-            <Button
-              variant={filtreStatut === 'toutes' ? 'primary' : 'outline'}
-              size="sm"
-              onClick={() => setFiltreStatut('toutes')}
-              className="d-flex align-center gap-2"
-            >
-              <span>Toutes ({alertes.liste.length})</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Liste des alertes */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          {alertes.chargement ? (
-            <div className="d-flex justify-center align-center py-12">
-              <LoadingSpinner size="lg" />
-            </div>
-          ) : filteredAlertes.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-20 h-20 bg-gray-100 rounded-full d-flex align-center justify-center mx-auto mb-4">
-                <Bell className="text-gray-400 w-10 h-10" />
-              </div>
-              <h3 className="font-semibold text-gray-800 mb-2">
-                Aucune alerte
-              </h3>
-              <p className="text-gray-600 text-sm mb-4">
-                {estPremium() 
-                  ? 'Créez votre première alerte pour être notifié des nouvelles publications' 
-                  : 'Souscrivez à Premium pour créer vos premières alertes'
-                }
-              </p>
-              {estPremium() && (
-                <Button
-                  variant="primary"
-                  onClick={() => setAfficherFormulaire(true)}
-                  className="d-flex align-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Créer une alerte</span>
-                </Button>
-              )}
-            </div>
           ) : (
-            <div className="divide-y divide-gray-100">
-              {filteredAlertes.map((alerte, index) => (
-                <div key={alerte.id || index} className="p-4 hover:bg-gray-50 transition">
-                  <div className="d-flex flex-column md-flex-row gap-4">
-                    {/* Icône */}
-                    <div className="flex-0">
-                      <div className="w-12 h-12 bg-primary bg-opacity-10 rounded-xl d-flex align-center justify-center">
-                        <Fish className="text-primary w-6 h-6" />
-                      </div>
-                    </div>
-
-                    {/* Détails */}
-                    <div className="flex-1">
-                      <div className="d-flex align-center gap-2 mb-2">
-                        <h3 className="font-semibold text-gray-900">{alerte.nom_poisson}</h3>
-                        <Badge variant={getStatutColor(alerte.statut)} size="sm">
-                          {getStatutLabel(alerte.statut)}
-                        </Badge>
-                      </div>
-                      
-                      {alerte.zone && (
-                        <p className="text-sm text-gray-600 mb-3">
-                          <MapPin className="w-4 h-4 inline" /> {alerte.zone}
-                        </p>
-                      )}
-
-                      <div className="d-flex align-center gap-4 text-sm text-gray-500">
-                        <div className="d-flex align-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          <span>
-                            Créée le {new Date(alerte.date_creation || alerte.created_at || new Date()).toLocaleDateString('fr-FR', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric'
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex-0 d-flex align-center gap-2">
-                      {alerte.statut === 'active' ? (
-                        <Button
-                          variant="warning-outline"
-                          size="sm"
-                          onClick={() => handleToggleStatut(alerte)}
-                          className="d-flex align-center gap-1"
-                        >
-                          <AlertCircle className="w-4 h-4" />
-                          <span className="d-none md-d-inline">Désactiver</span>
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="success-outline"
-                          size="sm"
-                          onClick={() => handleToggleStatut(alerte)}
-                          className="d-flex align-center gap-1"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                          <span className="d-none md-d-inline">Activer</span>
-                        </Button>
-                      )}
-                      
-                      <Button
-                        variant="danger-outline"
-                        size="sm"
-                        onClick={() => handleDelete(alerte.id)}
-                        className="d-flex align-center gap-1"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        <span className="d-none md-d-inline">Supprimer</span>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() => setAfficherModal(true)}
+              className="flex items-center gap-1.5 rounded-full bg-[#FF6B4A] px-3 py-1.5 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition hover:bg-[#E85A39]"
+            >
+              <Plus size={14} />
+              <span>Nouvelle alerte</span>
+            </button>
           )}
         </div>
 
-        {/* Produits disponibles correspondant aux alertes */}
-        {estPremium() && filteredAlertes.length > 0 && (
-          <div className="mt-6">
-            <h2 className="font-bold text-gray-900 text-xl mb-4">
-              Produits disponibles correspondant à vos alertes
-            </h2>
-            <div className="grid grid-cols-1 sm-grid-cols-2 lg-grid-cols-3 gap-4">
-              {publications.produits
-                .filter(produit => {
-                  const alertePoissons = filteredAlertes.map(a => a.nom_poisson.toLowerCase());
-                  return alertePoissons.includes((produit.nom || '').toLowerCase());
-                })
-                .slice(0, 4)
-                .map(produit => (
-                  <Card
-                    key={produit.id}
-                    className="overflow-hidden shadow-sm hover-shadow-md transition"
-                    hoverable
-                    onClick={() => navigate(`/acheteur/produit/${produit.id}`)}
-                  >
-                    <div className="relative h-40 overflow-hidden">
-                      <img
-                        src={produit.media || produit.image || 'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?w=400&auto=format&fit=crop&q=80'}
-                        alt={produit.nom}
-                        className="w-full h-full object-cover transition-transform hover:scale-105"
-                      />
-                      <span className="position-absolute top-2 left-2 px-2 py-0.5 bg-white/90 backdrop-blur-md rounded-full text-xs font-semibold text-primary">
-                        {produit.categorie || 'POISSON'}
-                      </span>
-                      <span className="position-absolute top-2 right-2 w-6 h-6 bg-amber-500 rounded-full d-flex align-center justify-center">
-                        <Bell className="text-white w-3 h-3" />
-                      </span>
+        {/* CONTENU SCROLLABLE */}
+        <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-24 pt-3">
+
+          {/* Messages d'erreur / succès */}
+          {erreur && (
+            <div className="mb-4 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+              <XCircle size={16} className="shrink-0 text-red-500" />
+              <span className="flex-1">{erreur}</span>
+              <button onClick={() => setErreur(null)} className="font-bold underline">
+                Fermer
+              </button>
+            </div>
+          )}
+
+          {succes && (
+            <div className="mb-4 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
+              <CheckCircle size={16} className="shrink-0 text-emerald-500" />
+              <span className="flex-1">{succes}</span>
+            </div>
+          )}
+
+          {/* Filtres */}
+          <div className="mb-5 flex gap-1 bg-stone-200/60 p-1 rounded-2xl">
+            {['active', 'inactive', 'toutes'].map((statut) => (
+              <button
+                key={statut}
+                type="button"
+                onClick={() => setFiltreStatut(statut)}
+                className={`flex-1 rounded-xl py-1.5 text-xs font-bold capitalize transition ${
+                  filtreStatut === statut
+                    ? 'bg-white text-stone-900 shadow-sm'
+                    : 'text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                {statut}
+              </button>
+            ))}
+          </div>
+
+          {/* Liste des alertes */}
+          <div className="space-y-2.5">
+            {alertes?.chargement ? (
+              <div className="py-12 text-center text-xs text-stone-400">Chargement...</div>
+            ) : filteredAlertes.length === 0 ? (
+              <div className="rounded-[28px] border border-stone-200/80 bg-white p-8 text-center shadow-sm">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-100 text-stone-400">
+                  <Bell size={22} />
+                </div>
+                <h3 className="text-xs font-bold text-stone-900 mb-1">Aucune alerte</h3>
+                <p className="text-[11px] text-stone-400 max-w-[200px] mx-auto">
+                  {estPremium()
+                    ? 'Ajoutez vos poissons favoris pour être notifié.'
+                    : 'Réservé aux membres Premium.'}
+                </p>
+              </div>
+            ) : (
+              filteredAlertes.map((alerte, index) => (
+                <div
+                  key={alerte.id || index}
+                  className="flex items-center justify-between rounded-[22px] border border-stone-200/80 bg-white p-3.5 shadow-sm transition hover:border-stone-300"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-[#FF6B4A]">
+                      <Fish size={18} />
                     </div>
-                    <Card.Body className="p-3">
-                      <h3 className="font-semibold text-gray-900 text-sm line-height-sm mb-1">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <h3 className="truncate text-xs font-bold text-stone-900">
+                          {alerte.nom_poisson}
+                        </h3>
+                        <span
+                          className={`inline-block h-2 w-2 rounded-full ${
+                            alerte.statut === 'active' ? 'bg-emerald-500' : 'bg-stone-300'
+                          }`}
+                        />
+                      </div>
+                      {alerte.zone ? (
+                        <p className="flex items-center gap-1 text-[11px] text-stone-500 truncate">
+                          <MapPin size={11} className="text-stone-400" /> {alerte.zone}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-stone-400">Toutes zones</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleStatut(alerte)}
+                      title={alerte.statut === 'active' ? 'Désactiver' : 'Activer'}
+                      className={`flex h-8 w-8 items-center justify-center rounded-xl transition ${
+                        alerte.statut === 'active'
+                          ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                          : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                      }`}
+                    >
+                      <Power size={13} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(alerte.id)}
+                      title="Supprimer"
+                      className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-50 text-red-500 hover:bg-red-100 transition"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Produits correspondants */}
+          {estPremium() && filteredAlertes.length > 0 && (
+            <div className="mt-6">
+              <h2 className="mb-3 text-[11px] font-extrabold uppercase tracking-wider text-stone-400">
+                Disponibles actuellement
+              </h2>
+              <div className="grid grid-cols-2 gap-2.5">
+                {(publications.produits || [])
+                  .filter((produit) => {
+                    const alertePoissons = filteredAlertes.map((a) =>
+                      a.nom_poisson.toLowerCase()
+                    );
+                    return alertePoissons.includes((produit.nom || '').toLowerCase());
+                  })
+                  .slice(0, 4)
+                  .map((produit) => (
+                    <div
+                      key={produit.id}
+                      onClick={() => navigate(`/acheteur/produit/${produit.id}`)}
+                      className="cursor-pointer overflow-hidden rounded-[20px] border border-stone-200/85 bg-white p-2 shadow-sm transition hover:shadow"
+                    >
+                      <div className="relative h-24 w-full overflow-hidden rounded-xl bg-stone-100">
+                        <img
+                          src={
+                            produit.media ||
+                            produit.image ||
+                            'https://images.unsplash.com/photo-1534483509719-3feaee7c30da?auto=format&fit=crop&w=400&q=80'
+                          }
+                          alt={produit.nom}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <h4 className="mt-2 truncate text-xs font-bold text-stone-900">
                         {produit.nom}
-                      </h3>
-                      <p className="text-primary font-bold text-sm mb-2">
+                      </h4>
+                      <p className="text-[11px] font-black text-[#FF6B4A]">
                         {new Intl.NumberFormat('fr-FR').format(produit.prix || 0)} FCFA
                       </p>
-                      <p className="text-xs text-gray-500">
-                        {produit.quantite} kg disponibles - {produit.adresse || 'Dakar'}
-                      </p>
-                    </Card.Body>
-                  </Card>
-                ))}
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* MODALE DE CRÉATION */}
+        {afficherModal && (
+          <div className="absolute inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-4">
+            <div className="w-full max-w-sm rounded-t-[32px] sm:rounded-[32px] bg-[#FAF6F0] p-6 shadow-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-black text-stone-900">Nouvelle alerte poisson</h2>
+                <button
+                  onClick={() => setAfficherModal(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-200/60 text-stone-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-3.5">
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold text-stone-700">
+                    Nom du poisson
+                  </label>
+                  <input
+                    type="text"
+                    list="poissons"
+                    placeholder="Ex: Thiof, Capitaine..."
+                    value={nouvelleAlerte.nomPoisson}
+                    onChange={(e) =>
+                      setNouvelleAlerte({ ...nouvelleAlerte, nomPoisson: e.target.value })
+                    }
+                    className="w-full rounded-2xl border border-stone-200 bg-white px-3.5 py-3 text-xs text-stone-800 outline-none focus:ring-2 focus:ring-[#FF6B4A]/20"
+                    required
+                  />
+                  <datalist id="poissons">
+                    {poissonsDisponibles.map((poisson, index) => (
+                      <option key={index} value={poisson} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold text-stone-700">
+                    Zone (facultatif)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Dakar, Soumbédioune..."
+                    value={nouvelleAlerte.zone}
+                    onChange={(e) =>
+                      setNouvelleAlerte({ ...nouvelleAlerte, zone: e.target.value })
+                    }
+                    className="w-full rounded-2xl border border-stone-200 bg-white px-3.5 py-3 text-xs text-stone-800 outline-none focus:ring-2 focus:ring-[#FF6B4A]/20"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={chargement}
+                  className="w-full rounded-2xl bg-[#FF6B4A] py-3.5 text-xs font-extrabold text-white shadow-lg shadow-orange-500/20 transition hover:bg-[#E85A39]"
+                >
+                  {chargement ? 'Création...' : "Créer l'alerte"}
+                </button>
+              </form>
             </div>
           </div>
         )}
+
+        {/* BOTTOM NAV HÉRITÉ */}
+        <AcheteurBottomNav />
       </div>
     </div>
   );

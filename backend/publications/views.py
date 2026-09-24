@@ -3,6 +3,7 @@ App : publications
 Fichier : views.py
 """
 
+from django.shortcuts import get_object_or_404
 from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -126,6 +127,10 @@ class ListeProduitsView(ListAPIView):
     Fil des produits pour le filtre "Produits" de l'écran d'accueil.
     Visible par tous les utilisateurs connectés.
     Ne montre QUE les publications validées (statut_moderation=visible).
+
+    NB : les produits en rupture restent dans la liste (avec statut="rupture").
+    Le pêcheur en a besoin pour pouvoir les réactiver, et les acheteurs les
+    voient grisés / non commandables côté front.
     """
     serializer_class = ProduitSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -145,6 +150,31 @@ class ListeInformationsView(ListAPIView):
         return Information.objects.filter(
             statut_moderation=Information.StatutModeration.VISIBLE
         ).order_by("-date_publication")
+
+
+class ChangerStatutProduitView(APIView):
+    """
+    Le pêcheur active / désactive la disponibilité de SON produit
+    (disponible <-> rupture). Un produit en rupture ne peut plus être
+    ajouté au panier ni commandé (voir CommandeCreateSerializer).
+    """
+    permission_classes = [EstPecheur]
+
+    def patch(self, request, pk):
+        # pecheur=request.user : impossible de modifier le produit d'un autre (404)
+        produit = get_object_or_404(Produit, pk=pk, pecheur=request.user)
+        nouveau = request.data.get("statut")
+
+        if nouveau not in Produit.Statut.values:
+            return Response(
+                {"erreur": "Statut invalide."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        produit.statut = nouveau
+        produit.save(update_fields=["statut"])
+        return Response(ProduitSerializer(produit).data, status=status.HTTP_200_OK)
+
 
 class PublierView(APIView):
     """
@@ -272,4 +302,4 @@ class PublierView(APIView):
                     == publication.StatutModeration.EN_ATTENTE,
             },
             status=status.HTTP_201_CREATED,
-        )    
+        )

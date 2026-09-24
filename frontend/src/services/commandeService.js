@@ -130,4 +130,47 @@ export const CommandeService = {
     const response = await API.get(`/notes/?livreur=${livreurId}`);
     return response.data;
   },
+
+
+    // ============================================
+  // LIVREUR
+  // ============================================
+  async toggleDisponible(disponible) {
+    const response = await API.patch('/livreur/disponible/', { disponible });
+    return response.data;
+  },
+
+  async listerCoursesDisponibles() {
+    const response = await API.get('/livraisons/disponibles/');
+    return response.data;
+  },
+
+  async accepterCourse(commandeIds) {
+    const response = await API.post('/livraisons/accepter/', { commande_ids: commandeIds });
+    return response.data;
+  },
+
+  async recupererLivraison(livraisonId) {
+    const response = await API.post(`/livraisons/${livraisonId}/recuperer/`);
+    return response.data;
+  },
+
+  async updatePosition(livraisonId, latitude, longitude) {
+    const response = await API.post(`/livraisons/${livraisonId}/position/`, {
+      latitude, longitude,
+    });
+    return response.data;
+  },
+
+  async terminerLivraison(livraisonId) {
+    const response = await API.post(`/livraisons/${livraisonId}/terminer/`);
+    return response.data;
+  },
+
+  async getLivraisonEnCours() {
+    const response = await API.get('/livraisons/en-cours/');
+    return response.data;
+  },
+
+
 };
