@@ -143,9 +143,13 @@ class Note(models.Model):
         related_name="signalements_traites",
     )
 
+    class Meta:
+        # Empêche le double-notation : 1 avis par (auteur, commande, cible)
+        unique_together = ("auteur", "commande", "cible")
+        ordering = ["-date"]
+
     def __str__(self):
         return f"Note {self.etoile}/5 de {self.auteur} à {self.cible}"
-
 
 class Alerte(models.Model):
     """

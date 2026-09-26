@@ -34,9 +34,6 @@ const formatDate = (dateStr) => {
   });
 };
 
-// ============================================
-// Statuts par onglet
-// ============================================
 const EN_COURS_STATUTS = [
   'en_attente_pecheur',
   'en_attente_paiement',
@@ -47,9 +44,6 @@ const EN_COURS_STATUTS = [
 const LIVREE_STATUTS = ['livree'];
 const HISTORIQUE_STATUTS = ['livree', 'annulee', 'refusee'];
 
-// ============================================
-// Timeline
-// ============================================
 const ETAPES = [
   { key: 'confirmee', label: 'Commande confirmée', icone: CheckCircle },
   { key: 'en_livraison', label: 'En cours de livraison', icone: Truck },
@@ -100,9 +94,6 @@ const getStatutCouleur = (statut) => {
   }
 };
 
-// ============================================
-// Page
-// ============================================
 export default function MesCommandes() {
   const navigate = useNavigate();
   const { mesCommandes, chargerMesCommandes } = useCommandes();
@@ -169,7 +160,6 @@ export default function MesCommandes() {
     <div className="min-h-screen bg-stone-300 font-sans antialiased sm:flex sm:items-center sm:justify-center sm:py-6">
       <div className="relative flex h-screen w-full max-w-md flex-col overflow-hidden bg-[#FAF6F0] sm:h-[880px] sm:max-h-[92vh] sm:rounded-[40px] sm:border-8 sm:border-stone-300 sm:shadow-2xl">
 
-        {/* HEADER HÉRITÉ */}
         <AcheteurHeader
           title="Mes Commandes"
           subtitle={`${toutesCommandes.length} commande${toutesCommandes.length > 1 ? 's' : ''} au total`}
@@ -249,13 +239,17 @@ export default function MesCommandes() {
                 `${prod.pecheur_prenom || ''} ${prod.pecheur_nom || ''}`.trim();
               const pecheurVille = prod.adresse || 'Dakar';
               const livreurNom = cmd.livreur_nom || null;
+              const telephoneLivreur = cmd.telephone_livreur || null;
+
+              // ⚡ L'itinéraire est cliquable SEULEMENT si en_livraison
+              const itineraireActif = cmd.statut === 'en_livraison';
 
               return (
                 <article
                   key={cmd.id}
                   className="overflow-hidden rounded-3xl border border-stone-100 bg-white shadow-sm"
                 >
-                  {/* Bandeau haut : date + badge statut */}
+                  {/* Bandeau haut */}
                   <div className="flex items-center justify-between px-4 pt-4">
                     <span className="text-[11px] text-stone-400">{formatDate(dateRef)}</span>
                     <span
@@ -326,7 +320,7 @@ export default function MesCommandes() {
                     </div>
                   )}
 
-                  {/* Timeline de suivi — UNIQUEMENT dans l'onglet "En cours" */}
+                  {/* Timeline */}
                   {filtreStatut === 'en_cours' && cmd.statut !== 'en_attente_pecheur' && (
                     <div className="mx-4 mb-3 border-t border-stone-100 pt-3">
                       <p className="flex items-center gap-1.5 text-[11px] font-bold text-stone-700 mb-3">
@@ -412,23 +406,59 @@ export default function MesCommandes() {
                     </div>
                   )}
 
-                  {/* Actions — dépendent de l'onglet actif */}
+                  {/* ACTIONS */}
                   {filtreStatut === 'en_cours' && (
                     <div className="flex gap-2 px-4 pb-4 pt-2">
+                      {/* Bouton ITINÉRAIRE — toujours visible, cliquable SEULEMENT si en_livraison */}
                       <button
-                        onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
-                        className="flex-1 rounded-2xl bg-stone-100 px-4 py-3 text-xs font-bold text-stone-700 transition hover:bg-stone-200"
+                        onClick={() => {
+                          if (itineraireActif) {
+                            navigate(`/acheteur/suivi-livraison/${cmd.id}`);
+                          }
+                        }}
+                        disabled={!itineraireActif}
+                        className={`flex flex-1 items-center justify-center gap-1.5 rounded-2xl px-4 py-3 text-xs font-bold transition ${
+                          itineraireActif
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98]'
+                            : 'cursor-not-allowed bg-stone-100 text-stone-400'
+                        }`}
+                        title={
+                          itineraireActif
+                            ? 'Voir la position du livreur en direct'
+                            : 'Disponible dès que le livreur aura accepté'
+                        }
                       >
+                        <MapPin size={13} />
                         Itinéraire
                       </button>
-                      <button
-                        onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
-                        className="flex-1 rounded-2xl bg-[#0F2A4A] px-4 py-3 text-xs font-bold text-white transition hover:bg-[#0a1f38]"
-                      >
-                        {cmd.statut === 'en_livraison'
-                          ? `Appeler ${livreurNom?.split(' ')[0] || 'le livreur'}`
-                          : 'Voir le détail'}
-                      </button>
+
+                      {/* Bouton secondaire intelligent */}
+                      {cmd.statut === 'en_livraison' ? (
+                        <button
+                          onClick={() => handleAppeler(telephoneLivreur)}
+                          disabled={!telephoneLivreur}
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-[#0F2A4A] px-4 py-3 text-xs font-bold text-white transition hover:bg-[#0a1f38] disabled:opacity-40"
+                        >
+                          <Phone size={13} />
+                          {livreurNom?.split(' ')[0] || 'Livreur'}
+                        </button>
+                      ) : cmd.statut === 'en_attente_paiement' ? (
+                        <button
+                          onClick={() =>
+                            navigate(`/acheteur/commande/attente/${cmd.id}`)
+                          }
+                          className="flex-1 rounded-2xl bg-[#FF6B4A] px-4 py-3 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition hover:bg-[#E85A39] active:scale-[0.98]"
+                        >
+                          Payer maintenant
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
+                          className="flex-1 rounded-2xl bg-[#0F2A4A] px-4 py-3 text-xs font-bold text-white transition hover:bg-[#0a1f38]"
+                        >
+                          Voir le détail
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -444,7 +474,7 @@ export default function MesCommandes() {
                         onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
                         className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white transition hover:bg-emerald-700"
                       >
-                        Note
+                        Noter
                       </button>
                     </div>
                   )}
@@ -459,25 +489,12 @@ export default function MesCommandes() {
                       </button>
                     </div>
                   )}
-
-                  {/* Bouton PAYER si commande en attente paiement */}
-                  {cmd.statut === 'en_attente_paiement' && (
-                    <div className="px-4 pb-4 pt-2">
-                      <button
-                        onClick={() => navigate(`/acheteur/commande/attente/${cmd.id}`)}
-                        className="w-full rounded-2xl bg-[#FF6B4A] px-4 py-3 text-xs font-black text-white transition hover:bg-[#E85A39]"
-                      >
-                        Payer maintenant
-                      </button>
-                    </div>
-                  )}
                 </article>
               );
             })
           )}
         </main>
 
-        {/* BOTTOM NAV HÉRITÉ */}
         <AcheteurBottomNav />
       </div>
     </div>

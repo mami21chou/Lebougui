@@ -140,4 +140,30 @@ export const AdminService = {
     const res = await API.get(url);
     return res.data;
   },
+
+    // ═══════════════════════════════════════════════════════════
+  // PUBLICATIONS À MODÉRER
+  // ═══════════════════════════════════════════════════════════
+  async getPublicationsEnAttente() {
+    const res = await API.get('/admin/publications-en-attente/');
+    return res.data;
+  },
+
+  async validerPublication(id, type = 'produit', corrections = {}) {
+    const res = await API.post(`/admin/${id}/valider-publication/`, {
+      type,
+      corrections,
+    });
+    return res.data;
+  },
+
+  async rejeterPublication(id, type = 'produit', motif = '') {
+    const res = await API.post(`/admin/${id}/rejeter-publication/`, {
+      type,
+      motif,
+    });
+    return res.data;
+  },
+
 };
+

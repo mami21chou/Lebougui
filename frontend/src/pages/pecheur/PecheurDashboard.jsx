@@ -404,10 +404,11 @@ export default function PecheurDashboard() {
               })}
             </div>
           )}
+          <PecheurBottomNav />
         </div>
+        
       </main>
-
-      <PecheurBottomNav />
+      
 
       {showRecorder && (
         <AudioRecorderModal

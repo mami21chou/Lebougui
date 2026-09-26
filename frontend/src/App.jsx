@@ -47,6 +47,7 @@ import AdminAcheteurs from './pages/admin/Acheteurs';
 import AdminSignalements from './pages/admin/Signalements';
 import AdminPremium from './pages/admin/Premium';
 import AdminStatistiques from './pages/admin/Statistiques';
+import AdminPublications from './pages/admin/Publications';
 
 export default function App() {
   return (
@@ -180,7 +181,13 @@ export default function App() {
           <Route path="/admin/signalements" element={<AdminSignalements />} />
           <Route path="/admin/premium" element={<AdminPremium />} />  
           <Route path="/admin/statistiques" element={<AdminStatistiques />}/>
- 
+          <Route
+              path="/admin/publications"
+              element={
+                  <AdminPublications />
+              }
+            />
+            
 
         {/* Fallback */}
         {/* <Route path="*" element={<Navigate to="/connexion" replace />} /> */}

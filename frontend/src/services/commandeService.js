@@ -109,6 +109,7 @@ export const CommandeService = {
     const response = await API.get('/livraisons/');
     return response.data;
   },
+
   async listerMesLivraisons() {
     const response = await API.get('/livraisons/?mine=true');
     return response.data;
@@ -118,17 +119,23 @@ export const CommandeService = {
     return response.data;
   },
 
-  // ============================================
+   // ═══════════════════════════════════════════════════════════
   // NOTES
-  // ============================================
-  async noterLivreur(livraisonId, note, commentaire = '') {
-    const payload = { livraison: livraisonId, note, commentaire };
-    const response = await API.post('/notes/', payload);
-    return response.data;
+  // ═══════════════════════════════════════════════════════════
+
+  async getNotesCommande(commandeId) {
+    const res = await API.get(`/notes/par-commande/${commandeId}/`);
+    return res.data;
   },
-  async listerNotesLivreur(livreurId) {
-    const response = await API.get(`/notes/?livreur=${livreurId}`);
-    return response.data;
+
+  async creerNote({ commande, cible, etoile, commentaire }) {
+    const res = await API.post('/notes/', {
+      commande,
+      cible,
+      etoile,
+      commentaire,
+    });
+    return res.data;
   },
 
 

@@ -434,6 +434,66 @@ class NoteViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(auteur=self.request.user)
 
+    # ═══════════════════════════════════════════════════════════
+    # NOUVEAU — Notes d'une commande + cibles possibles
+    # ═══════════════════════════════════════════════════════════
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="par-commande/(?P<commande_id>[^/.]+)",
+    )
+    def par_commande(self, request, commande_id=None):
+        """Retourne les notes existantes + les cibles possibles pour cette commande."""
+        notes = Note.objects.filter(
+            commande_id=commande_id,
+            auteur=request.user,
+        ).select_related("cible")
+
+        return Response({
+            "notes": NoteSerializer(notes, many=True).data,
+            "cibles_possibles": self._cibles_possibles(commande_id, request.user),
+        })
+
+    def _cibles_possibles(self, commande_id, acheteur):
+        """Renvoie le pêcheur et le livreur avec info sur qui a été noté."""
+        try:
+            commande = Commande.objects.select_related("pecheur").get(
+                pk=commande_id, acheteur=acheteur
+            )
+        except Commande.DoesNotExist:
+            return []
+
+        notes_existantes = {
+            n.cible_id
+            for n in Note.objects.filter(commande=commande, auteur=acheteur)
+        }
+
+        cibles = []
+
+        # ─── Pêcheur ───
+        pecheur = commande.pecheur
+        cibles.append({
+            "id": pecheur.id,
+            "type": "pecheur",
+            "nom": f"{pecheur.prenom} {pecheur.nom}".strip(),
+            "telephone": pecheur.telephone,
+            "deja_note": pecheur.id in notes_existantes,
+        })
+
+        # ─── Livreur (si présent) ───
+        livraison = commande.livraisons.first()
+        if livraison and livraison.livreur:
+            livreur = livraison.livreur.utilisateur
+            cibles.append({
+                "id": livreur.id,
+                "type": "livreur",
+                "nom": f"{livreur.prenom} {livreur.nom}".strip(),
+                "telephone": livreur.telephone,
+                "deja_note": livreur.id in notes_existantes,
+            })
+
+        return cibles
+
 
 # =========================================================
 # 4. VIEWSET ALERTE (EXCLUSIF PREMIUM)
@@ -1050,4 +1110,140 @@ class AdminViewSet(viewsets.ViewSet):
 
             "revenus_annee": revenus_annee,
             "revenus_total": revenus_total,
+        })
+
+        # ═══════════════════════════════════════════════════════════
+    # 16. PUBLICATIONS EN ATTENTE DE MODÉRATION
+    # ═══════════════════════════════════════════════════════════
+    @action(detail=False, methods=["get"], url_path="publications-en-attente")
+    def publications_en_attente(self, request):
+        """Liste les Produits et Informations en attente de validation admin."""
+        from publications.models import Produit, Information, Publication
+
+        # Grâce à l'héritage, on peut tout récupérer depuis Publication
+        qs_produits = Produit.objects.filter(
+            statut_moderation=Publication.StatutModeration.EN_ATTENTE
+        ).select_related("pecheur").order_by("-date_publication")
+
+        qs_informations = Information.objects.filter(
+            statut_moderation=Publication.StatutModeration.EN_ATTENTE
+        ).select_related("pecheur").order_by("-date_publication")
+
+        # ─── Sérialisation manuelle ───
+        def serialiser_produit(p):
+            return {
+                "id": p.id,
+                "type": "produit",
+                "nom": p.nom,
+                "categorie": p.categorie,
+                "prix": float(p.prix) if p.prix else 0,
+                "quantite": float(p.quantite) if p.quantite else 0,
+                "media": request.build_absolute_uri(p.media.url) if p.media else None,
+                "audio": request.build_absolute_uri(p.audio.url) if p.audio else None,
+                "adresse": p.adresse or "",
+                "latitude": p.latitude,
+                "longitude": p.longitude,
+                "texte_transcrit": p.texte_transcrit,
+                "texte_traduit": p.texte_traduit,
+                "score_confiance_ia": p.score_confiance_ia,
+                "date_publication": p.date_publication,
+                "statut_moderation": p.statut_moderation,
+                "pecheur_id": p.pecheur.id,
+                "pecheur_prenom": p.pecheur.prenom,
+                "pecheur_nom": p.pecheur.nom,
+            }
+
+        def serialiser_information(i):
+            return {
+                "id": i.id,
+                "type": "information",
+                "description": i.description,
+                "audio": request.build_absolute_uri(i.audio.url) if i.audio else None,
+                "adresse": i.adresse or "",
+                "latitude": i.latitude,
+                "longitude": i.longitude,
+                "texte_transcrit": i.texte_transcrit,
+                "texte_traduit": i.texte_traduit,
+                "score_confiance_ia": i.score_confiance_ia,
+                "date_publication": i.date_publication,
+                "statut_moderation": i.statut_moderation,
+                "pecheur_id": i.pecheur.id,
+                "pecheur_prenom": i.pecheur.prenom,
+                "pecheur_nom": i.pecheur.nom,
+            }
+
+        produits = [serialiser_produit(p) for p in qs_produits]
+        informations = [serialiser_information(i) for i in qs_informations]
+
+        return Response({
+            "produits": produits,
+            "informations": informations,
+            "total": len(produits) + len(informations),
+        })
+
+
+    # ═══════════════════════════════════════════════════════════
+    # 17. VALIDER UNE PUBLICATION
+    # ═══════════════════════════════════════════════════════════
+    @action(detail=True, methods=["post"], url_path="valider-publication")
+    def valider_publication(self, request, pk=None):
+        """
+        Valide une publication en attente.
+        Body attendu : { "type": "produit" | "information", "corrections": {...} }
+        """
+        from publications.models import Produit, Information, Publication
+
+        type_pub = request.data.get("type", "produit")
+        corrections = request.data.get("corrections", {})
+
+        Model = Produit if type_pub == "produit" else Information
+
+        try:
+            pub = Model.objects.get(pk=pk)
+        except Model.DoesNotExist:
+            return Response({"erreur": "Publication introuvable."}, status=404)
+
+        # Appliquer les corrections éventuelles de l'admin
+        champs_autorises = {
+            "produit": ["nom", "categorie", "prix", "quantite", "adresse", "latitude", "longitude"],
+            "information": ["description", "adresse", "latitude", "longitude"],
+        }
+        for champ in champs_autorises[type_pub]:
+            if champ in corrections and corrections[champ] not in (None, ""):
+                setattr(pub, champ, corrections[champ])
+
+        # Valider la modération
+        pub.statut_moderation = Publication.StatutModeration.VISIBLE
+        pub.save()
+
+        return Response({
+            "success": True,
+            "message": "Publication validée et visible sur le marché.",
+        })
+
+
+    # ═══════════════════════════════════════════════════════════
+    # 18. REJETER UNE PUBLICATION
+    # ═══════════════════════════════════════════════════════════
+    @action(detail=True, methods=["post"], url_path="rejeter-publication")
+    def rejeter_publication(self, request, pk=None):
+        """Rejette une publication en attente (elle ne sera pas visible)."""
+        from publications.models import Produit, Information, Publication
+
+        type_pub = request.data.get("type", "produit")
+        motif = request.data.get("motif", "Non conforme")
+
+        Model = Produit if type_pub == "produit" else Information
+
+        try:
+            pub = Model.objects.get(pk=pk)
+        except Model.DoesNotExist:
+            return Response({"erreur": "Publication introuvable."}, status=404)
+
+        pub.statut_moderation = Publication.StatutModeration.REJETE
+        pub.save()
+
+        return Response({
+            "success": True,
+            "message": f"Publication rejetée. Motif : {motif}",
         })

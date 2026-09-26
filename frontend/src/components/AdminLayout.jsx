@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Fish, ShoppingBag, Truck, TrendingUp,
   Bell, LogOut, Menu, Search, ChevronDown, Shield, AlertTriangle,
-  BarChart3, Crown,
+  BarChart3, Crown, FileCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { AdminService } from '../services/adminService';
 
 const NAV_ITEMS = [
   {
@@ -27,6 +28,13 @@ const NAV_ITEMS = [
     section: 'Modération',
     items: [
       {
+        id: 'publications',
+        label: 'Publications à modérer',
+        icon: FileCheck,
+        path: '/admin/publications',
+        badgeKey: 'publications',
+      },
+      {
         id: 'signalements',
         label: 'Signalements',
         icon: AlertTriangle,
@@ -47,7 +55,7 @@ export default function AdminLayout({
   children,
   title = 'Tableau de bord',
   subtitle = '',
-  badges = {},
+  badges: badgesProp = {},
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -55,6 +63,41 @@ export default function AdminLayout({
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [badges, setBadges] = useState(badgesProp);
+
+  // ═══════════════════════════════════════════════════════════
+  // CHARGEMENT AUTOMATIQUE DES BADGES (toutes les 30s)
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [stats, aRevoquer, pubsEnAttente] = await Promise.all([
+          AdminService.getStats(),
+          AdminService.getUtilisateursARevoquer(),
+          AdminService.getPublicationsEnAttente(),
+        ]);
+        setBadges({
+          signalements: aRevoquer.length,
+          publications: pubsEnAttente.total || 0,
+          pecheurs: stats.pecheurs_en_attente,
+          livreurs: stats.livreurs_en_attente,
+          premium: stats.premium_en_attente,
+        });
+      } catch (err) {
+        console.warn('Badges non chargés:', err);
+      }
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, [location.pathname]);
+
+  // Synchronise si la prop `badges` change
+  useEffect(() => {
+    if (Object.keys(badgesProp).length > 0) {
+      setBadges((prev) => ({ ...prev, ...badgesProp }));
+    }
+  }, [badgesProp]);
 
   const isActive = (path) =>
     location.pathname === path || location.pathname.startsWith(`${path}/`);
@@ -66,9 +109,6 @@ export default function AdminLayout({
     window.location.href = '/admin/connexion';
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // INFOS UTILISATEUR CONNECTÉ (avec fallbacks intelligents)
-  // ═══════════════════════════════════════════════════════════
   const initiale = (
     utilisateur?.prenom?.charAt(0) ||
     utilisateur?.email?.charAt(0) ||
@@ -157,6 +197,8 @@ export default function AdminLayout({
                           className={`flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-black ${
                             item.badgeKey === 'signalements'
                               ? 'bg-rose-500/20 text-rose-300'
+                              : item.badgeKey === 'publications'
+                              ? 'bg-amber-500/20 text-amber-300'
                               : 'bg-white/10 text-slate-300'
                           }`}
                         >
@@ -165,7 +207,15 @@ export default function AdminLayout({
                       )}
 
                       {badgeCount > 0 && collapsed && (
-                        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-500" />
+                        <span
+                          className={`absolute right-1 top-1 h-2 w-2 rounded-full ${
+                            item.badgeKey === 'signalements'
+                              ? 'bg-rose-500'
+                              : item.badgeKey === 'publications'
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500'
+                          }`}
+                        />
                       )}
                     </button>
                   );
@@ -218,7 +268,6 @@ export default function AdminLayout({
         {/* TOPBAR */}
         <header className="flex h-[76px] shrink-0 items-center justify-between gap-4 border-b border-slate-200/70 bg-white/70 px-6 backdrop-blur-xl">
 
-          {/* Gauche : toggle + titre */}
           <div className="flex min-w-0 items-center gap-4">
             <button
               onClick={() => setCollapsed(!collapsed)}
@@ -245,10 +294,8 @@ export default function AdminLayout({
             </div>
           </div>
 
-          {/* Droite : recherche + notifs + profil */}
           <div className="flex shrink-0 items-center gap-2">
 
-            {/* Recherche */}
             <div className="relative hidden md:block">
               <Search
                 size={15}
@@ -261,7 +308,6 @@ export default function AdminLayout({
               />
             </div>
 
-            {/* Notifications */}
             <button
               className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100"
               aria-label="Notifications"
@@ -270,7 +316,6 @@ export default function AdminLayout({
               <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-[#FF6B4A] ring-2 ring-white" />
             </button>
 
-            {/* Profil */}
             <button className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-slate-100">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0C3B4A] text-xs font-bold text-white">
                 {initiale}
@@ -288,7 +333,6 @@ export default function AdminLayout({
           </div>
         </header>
 
-        {/* CONTENU */}
         <main className="no-scrollbar flex-1 overflow-y-auto px-6 py-6">
           <div className="mx-auto max-w-7xl">{children}</div>
         </main>

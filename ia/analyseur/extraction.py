@@ -33,6 +33,7 @@ ESPECES = {
     "tank":     ("Crabe",      "fruit_de_mer"),
     "langust":  ("Langouste",  "fruit_de_mer"),
     "calmar":   ("Calmar",     "fruit_de_mer"),
+    "thioxogn":("crabe","fruit_de_mer" ),
 
     # --- Variantes phonétiques ---
     "tiof":     ("Thiof",      "poisson"),
@@ -45,6 +46,8 @@ ESPECES = {
     "mbosse":   ("Courbine",   "poisson"),
     "sok":      ("Crevette",   "fruit_de_mer"),
     "yokute":   ("Poulpe",     "fruit_de_mer"),
+    "Karabe": ("crabe","fruit_de_mer" ),
+    "thioxogn":("crabe","fruit_de_mer" ),
 
     # --- Français (au cas où la traduction foire) ---
     "dorade":   ("Dorade",     "poisson"),
@@ -62,6 +65,7 @@ ESPECES = {
     "huitre":   ("Huître",     "fruit_de_mer"),
     "huître":   ("Huître",     "fruit_de_mer"),
     "langouste":("Langouste",  "fruit_de_mer"),
+    "crabe":("Crabe", "fruit_de_mer")
 }
 
 SEUIL_RESSEMBLANCE = 0.75

@@ -239,17 +239,41 @@ class LivraisonSerializer(serializers.ModelSerializer):
 
 class NoteSerializer(serializers.ModelSerializer):
     nom_auteur = serializers.CharField(source="auteur.nom", read_only=True)
+    prenom_auteur = serializers.CharField(source="auteur.prenom", read_only=True)
     nom_cible = serializers.CharField(source="cible.nom", read_only=True)
+    prenom_cible = serializers.CharField(source="cible.prenom", read_only=True)
+    role_cible = serializers.CharField(source="cible.role", read_only=True)
 
     class Meta:
         model = Note
-        fields = ["id", "auteur", "nom_auteur", "cible", "nom_cible", "commande", "etoile", "commentaire", "date"]
+        fields = [
+            "id", "auteur", "nom_auteur", "prenom_auteur",
+            "cible", "nom_cible", "prenom_cible", "role_cible",
+            "commande", "etoile", "commentaire", "date",
+        ]
         read_only_fields = ["auteur", "date"]
 
     def validate(self, attrs):
         commande = attrs.get("commande")
         cible = attrs.get("cible")
+        request = self.context.get("request")
 
+        if not commande or not cible:
+            raise serializers.ValidationError("Commande et cible obligatoires.")
+
+        # La commande doit être livrée
+        if commande.statut != "livree":
+            raise serializers.ValidationError(
+                {"commande": "Vous ne pouvez noter qu'une commande livrée."}
+            )
+
+        # Seul l'acheteur propriétaire peut noter
+        if request and commande.acheteur_id != request.user.id:
+            raise serializers.ValidationError(
+                {"commande": "Vous ne pouvez noter que vos propres commandes."}
+            )
+
+        # La cible doit être le pêcheur OU le livreur
         pecheur_id = commande.pecheur_id
         livraison = commande.livraisons.first()
         livreur_id = (
@@ -260,9 +284,22 @@ class NoteSerializer(serializers.ModelSerializer):
 
         if cible.id not in [pecheur_id, livreur_id]:
             raise serializers.ValidationError(
-                {"cible": "La cible notée doit être le pêcheur ou le livreur de la commande."}
+                {"cible": "La cible doit être le pêcheur ou le livreur de cette commande."}
             )
+
+        # Empêcher la double note
+        if request and Note.objects.filter(
+            auteur=request.user, commande=commande, cible=cible
+        ).exists():
+            raise serializers.ValidationError(
+                {"detail": "Vous avez déjà noté cette personne pour cette commande."}
+            )
+
         return attrs
+
+    def create(self, validated_data):
+        validated_data["auteur"] = self.context["request"].user
+        return super().create(validated_data)
 
 
 # =========================================================

@@ -1,16 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Package, MapPin, Phone, ArrowLeft, CheckCircle, XCircle,
-  Truck, Calendar, User, Printer, Share2, Star, Loader2,
+  Truck, Calendar, User, Printer, Share2, Star, Loader2
 } from 'lucide-react';
 import { useCommandes } from '../../context/CommandeContext';
 import { useAuth } from '../../context/AuthContext';
 import AcheteurHeader from '../../components/AcheteurHeader';
 import AcheteurBottomNav from '../../components/AcheteurBottomNav';
 import useCartCount from '../../hooks/useCartCount';
+import NotationModal from '../../components/NotationModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+// ═══════════════════════════════════════════════════════════
+// Helper : calcul du sous-total d'une ligne (source unique de vérité)
+// ═══════════════════════════════════════════════════════════
+const ligneSousTotal = (ligne) => {
+  const prix = Number(ligne?.prix_unitaire) || 0;
+  const qte = Number(ligne?.quantite) || 0;
+  return prix * qte;
+};
 
 export default function CommandeDetails() {
   const navigate = useNavigate();
@@ -26,6 +36,7 @@ export default function CommandeDetails() {
 
   const [livreurInfo, setLivreurInfo] = useState(null);
   const [livreurChargement, setLivreurChargement] = useState(false);
+  const [showNotation, setShowNotation] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -102,8 +113,19 @@ export default function CommandeDetails() {
     };
   }, [commande]);
 
+  // ═══════════════════════════════════════════════════════════
+  // CALCULS FINANCIERS — strict, source unique
+  // ═══════════════════════════════════════════════════════════
+  const sousTotal = useMemo(() => {
+    if (!commande?.lignes) return 0;
+    return commande.lignes.reduce((sum, l) => sum + ligneSousTotal(l), 0);
+  }, [commande]);
+
+  const fraisLivraison = Number(commande?.frais_livraison) || 0;
+  const total = sousTotal + fraisLivraison;
+
   const formaterPrix = (prix) =>
-    `${new Intl.NumberFormat('fr-FR').format(prix || 0)} FCFA`;
+    `${new Intl.NumberFormat('fr-FR').format(Math.round(Number(prix) || 0))} FCFA`;
 
   const formaterDate = (dateString) => {
     if (!dateString) return '';
@@ -114,15 +136,6 @@ export default function CommandeDetails() {
       hour: '2-digit',
       minute: '2-digit',
     });
-  };
-
-  const calculerTotal = () => {
-    if (!commande?.lignes) return 0;
-    return commande.lignes.reduce(
-      (total, ligne) =>
-        total + (ligne.prix_unitaire || 0) * (ligne.quantite || 0),
-      0
-    );
   };
 
   const getStatutLabel = (statut) => {
@@ -239,8 +252,6 @@ export default function CommandeDetails() {
     );
   }
 
-  const total = calculerTotal() + (commande.frais_livraison || 0);
-
   const etapeActuelle = (() => {
     switch (commande.statut) {
       case 'en_attente_pecheur':
@@ -305,9 +316,9 @@ export default function CommandeDetails() {
             </div>
           )}
 
-          {/* FACTURE FORMATÉE PROPREMENT */}
+          {/* FACTURE */}
           <div className="rounded-[28px] border border-stone-200/80 bg-white p-5 shadow-sm space-y-5">
-            
+
             {/* EN-TÊTE FACTURE */}
             <div className="flex items-start justify-between border-b border-stone-100 pb-4">
               <div>
@@ -328,7 +339,7 @@ export default function CommandeDetails() {
               </span>
             </div>
 
-            {/* TIMELINE COMPacte */}
+            {/* TIMELINE compacte */}
             <div className="flex items-center justify-between gap-1 bg-stone-50/70 rounded-2xl px-3 py-2.5">
               {[
                 { key: 'confirmee', label: 'Confirmée', icon: CheckCircle },
@@ -389,15 +400,17 @@ export default function CommandeDetails() {
               </div>
             </div>
 
-            {/* LIGNES DE PRODUITS (STYLE FACTURE TABLEAU) */}
+            {/* ARTICLES */}
             <div>
               <span className="text-[10px] font-extrabold uppercase tracking-widest text-stone-400">
                 Articles commandés ({commande.lignes?.length || 0})
               </span>
-              
+
               <div className="mt-2.5 divide-y divide-stone-100">
                 {commande.lignes?.map((ligne, index) => {
                   const produit = ligne.produit_detail || {};
+                  const sousTotalLigne = ligneSousTotal(ligne);
+
                   return (
                     <div key={index} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2.5 pr-2 min-w-0">
@@ -411,14 +424,16 @@ export default function CommandeDetails() {
                           className="h-10 w-10 shrink-0 rounded-xl border border-stone-100 object-cover"
                         />
                         <div className="min-w-0">
-                          <p className="font-bold text-stone-900 truncate">{produit.nom || 'Produit'}</p>
+                          <p className="font-bold text-stone-900 truncate">
+                            {produit.nom || 'Produit'}
+                          </p>
                           <p className="text-[10px] text-stone-500">
                             {ligne.quantite} kg × {formaterPrix(ligne.prix_unitaire)}
                           </p>
                         </div>
                       </div>
                       <span className="font-bold text-stone-900 shrink-0">
-                        {formaterPrix(ligne.sous_total || (ligne.prix_unitaire || 0) * (ligne.quantite || 0))}
+                        {formaterPrix(sousTotalLigne)}
                       </span>
                     </div>
                   );
@@ -426,27 +441,33 @@ export default function CommandeDetails() {
               </div>
             </div>
 
-            {/* TOTAUX DE LA FACTURE */}
+            {/* TOTAUX */}
             <div className="border-t border-stone-100 pt-3.5 space-y-2 text-xs">
               <div className="flex justify-between text-stone-500">
                 <span>Sous-total articles</span>
-                <span className="font-semibold text-stone-900">{formaterPrix(calculerTotal())}</span>
+                <span className="font-semibold text-stone-900">
+                  {formaterPrix(sousTotal)}
+                </span>
               </div>
-              {commande.frais_livraison > 0 && (
+              {fraisLivraison > 0 && (
                 <div className="flex justify-between text-stone-500">
                   <span>Frais de livraison</span>
-                  <span className="font-semibold text-stone-900">{formaterPrix(commande.frais_livraison)}</span>
+                  <span className="font-semibold text-stone-900">
+                    {formaterPrix(fraisLivraison)}
+                  </span>
                 </div>
               )}
               <div className="flex justify-between items-center border-t border-stone-100 pt-2.5 text-sm font-black">
                 <span className="text-stone-900">Total à payer</span>
-                <span className="text-[#FF6B4A] text-base">{formaterPrix(total)}</span>
+                <span className="text-[#FF6B4A] text-base">
+                  {formaterPrix(total)}
+                </span>
               </div>
             </div>
 
           </div>
 
-          {/* CONTACTS : PÊCHEUR + LIVREUR */}
+          {/* CONTACTS */}
           <div className="space-y-2.5">
             <span className="text-[10px] font-extrabold uppercase tracking-widest text-stone-400 px-1">
               Intervenants
@@ -546,40 +567,18 @@ export default function CommandeDetails() {
                 <p className="px-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
                   Votre avis compte
                 </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() =>
-                      navigate(`/acheteur/note/${commande.id}?cible=pecheur`)
-                    }
-                    className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-extrabold text-amber-700 transition hover:bg-amber-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      <Star size={13} fill="currentColor" />
-                      <span>Noter</span>
-                    </div>
-                    <span className="text-[10px] font-medium">le pêcheur</span>
-                  </button>
 
-                  <button
-                    onClick={() =>
-                      navigate(`/acheteur/note/${commande.id}?cible=livreur`)
-                    }
-                    disabled={!livreurNom}
-                    className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-extrabold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-stone-100 disabled:bg-stone-50 disabled:text-stone-400"
-                  >
-                    <div className="flex items-center gap-1">
-                      <Star size={13} fill="currentColor" />
-                      <span>Noter</span>
-                    </div>
-                    <span className="text-[10px] font-medium">le livreur</span>
-                  </button>
-                </div>
+                <button
+                  onClick={() => setShowNotation(true)}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FF6B4A] py-3.5 text-xs font-extrabold text-white shadow-lg shadow-orange-500/25 transition hover:bg-[#E85A39] active:scale-[0.98]"
+                >
+                  <Star size={14} fill="currentColor" />
+                  Noter le pêcheur & le livreur
+                </button>
               </div>
             )}
 
-            {['en_attente_pecheur', 'en_attente_paiement'].includes(
-              commande.statut
-            ) && (
+            {['en_attente_pecheur', 'en_attente_paiement'].includes(commande.statut) && (
               <button
                 onClick={handleAnnulerCommande}
                 disabled={chargement}
@@ -616,6 +615,18 @@ export default function CommandeDetails() {
         </main>
 
         <AcheteurBottomNav />
+
+        {/* MODALE DE NOTATION */}
+        {showNotation && (
+          <NotationModal
+            commandeId={commande.id}
+            onClose={() => setShowNotation(false)}
+            onSuccess={() => {
+              setSucces('Merci pour votre avis !');
+              setTimeout(() => setSucces(null), 2500);
+            }}
+          />
+        )}
       </div>
     </div>
   );
