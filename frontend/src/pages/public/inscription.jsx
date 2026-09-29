@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, MapPin, Phone, Snowflake, CheckCircle2, AlertCircle } from 'lucide-react';
 import { AuthService } from '../../services/authService';
+import { validerFormulaire, filtrerSaisie, LONGUEUR_TELEPHONE, LONGUEUR_CODE_PIN, PREFIXES_TELEPHONE_VALIDES } from '../../utils/validators';
 import logo from '../../assets/logo-lebougui.jpeg';
 import bgImage from '../../assets/hero.png';
 
 export default function Register() {
   const navigate = useNavigate();
 
-  // État initial du formulaire pour réinitialisation propre
   const initialFormState = {
     prenom: '',
     nom: '',
@@ -22,48 +22,72 @@ export default function Register() {
   };
 
   const [formData, setFormData] = useState(initialFormState);
+  const [errors, setErrors] = useState({});
   const [showPin, setShowPin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // ═══════════════════════════════════════════════════════════
+  // GESTION DES CHAMPS
+  // ═══════════════════════════════════════════════════════════
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }));
+
+    let newValue = type === 'checkbox' ? checked : value;
+
+    // Filtre en temps réel selon le champ
+    if (type !== 'checkbox') {
+      newValue = filtrerSaisie(name, newValue);
+    }
+
+    setFormData((prev) => ({ ...prev, [name]: newValue }));
+
+    // Efface l'erreur du champ dès que l'utilisateur modifie
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: null }));
+    }
   };
 
   const handleRoleSelect = (role) => {
     setFormData((prev) => ({ ...prev, role }));
+    setErrors({});
   };
 
+  // ═══════════════════════════════════════════════════════════
+  // SOUMISSION
+  // ═══════════════════════════════════════════════════════════
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setErrorMsg('');
     setSuccessMsg('');
 
+    // 1️⃣ Validation locale via validators.js
+    const erreurs = validerFormulaire(formData);
+
+    if (Object.keys(erreurs).length > 0) {
+      setErrors(erreurs);
+      setErrorMsg('Veuillez corriger les erreurs dans le formulaire.');
+      return;
+    }
+
+    setLoading(true);
+
     try {
       const data = await AuthService.inscription(formData);
-      
-      // 1. Message de succès
-      setSuccessMsg(data.message || 'Inscription réussie avec succès ! Redirection en cours...');
 
-      // 2. Réinitialisation du formulaire
+      setSuccessMsg(data.message || 'Inscription réussie ! Redirection en cours...');
       setFormData(initialFormState);
+      setErrors({});
 
-      // 3. Redirection vers la page de connexion après 2 secondes
-      setTimeout(() => {
-        navigate('/connexion');
-      }, 2000);
-
+      setTimeout(() => navigate('/connexion'), 2000);
     } catch (err) {
       if (err.response && err.response.data) {
         const data = err.response.data;
         const firstErrorKey = Object.keys(data)[0];
-        const firstErrorVal = Array.isArray(data[firstErrorKey]) ? data[firstErrorKey][0] : data[firstErrorKey];
+        const firstErrorVal = Array.isArray(data[firstErrorKey])
+          ? data[firstErrorKey][0]
+          : data[firstErrorKey];
         setErrorMsg(`${firstErrorKey.toUpperCase()}: ${firstErrorVal}`);
       } else {
         setErrorMsg('Une erreur est survenue lors de la connexion au serveur.');
@@ -73,26 +97,42 @@ export default function Register() {
     }
   };
 
+  // ═══════════════════════════════════════════════════════════
+  // COMPOSANTS UTILITAIRES
+  // ═══════════════════════════════════════════════════════════
+  const FieldError = ({ field }) => {
+    if (!errors[field]) return null;
+    return (
+      <p className="mt-1 text-[10px] text-red-600 font-medium flex items-center gap-1">
+        <AlertCircle size={10} />
+        {errors[field]}
+      </p>
+    );
+  };
+
+  const inputClass = (field, extra = '') =>
+    `w-full px-3 py-2.5 bg-slate-200/60 text-slate-900 placeholder-slate-400 rounded-xl text-sm focus:outline-none focus:ring-2 ${
+      errors[field]
+        ? 'ring-2 ring-red-400 border border-red-400'
+        : 'focus:ring-orange-500'
+    } ${extra}`;
+
   return (
     <div className="relative min-h-screen w-full flex flex-col items-center justify-start bg-slate-950 font-sans text-slate-800">
-      
-      {/* Background Image avec calque d'assombrissement */}
-      <div 
+
+      {/* Background */}
+      <div
         className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0"
         style={{ backgroundImage: `url(${bgImage})` }}
       />
       <div className="fixed inset-0 bg-gradient-to-b from-slate-950/85 via-slate-950/65 to-slate-950/90 backdrop-blur-[2px] z-0" />
 
-      {/* --- HEADER AVEC LOGO INTEGRÉ --- */}
+      {/* Header */}
       <div className="relative z-10 w-full max-w-md px-4 pt-8 pb-3 flex flex-col items-center">
         <div className="relative mb-2">
           <div className="absolute -inset-1.5 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full blur-md opacity-40"></div>
           <div className="relative flex items-center justify-center bg-white/95 p-2.5 rounded-full shadow-2xl border border-white/20">
-            <img 
-              src={logo} 
-              alt="Lebougui Logo" 
-              className="h-14 w-14 object-contain rounded-full"
-            />
+            <img src={logo} alt="Lebougui Logo" className="h-14 w-14 object-contain rounded-full" />
           </div>
         </div>
 
@@ -104,10 +144,10 @@ export default function Register() {
         </div>
       </div>
 
-      {/* --- FORMULAIRE D'INSCRIPTION --- */}
+      {/* Formulaire */}
       <div className="relative z-10 w-full max-w-md px-4 pb-10">
         <div className="w-full bg-slate-50/95 backdrop-blur-md rounded-3xl p-6 shadow-2xl border border-white/30">
-          
+
           <div className="mb-5">
             <h2 className="text-xl font-bold text-slate-900">
               {formData.role === 'livreur' ? 'Inscription Livreur' : 'Inscription'}
@@ -129,36 +169,41 @@ export default function Register() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+
+            {/* PRÉNOM + NOM */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] font-bold tracking-wider text-slate-700 uppercase mb-1">Prénom</label>
                 <input
                   type="text"
                   name="prenom"
-                  required
                   placeholder="Prénom"
                   value={formData.prenom}
                   onChange={handleChange}
-                  className="w-full px-3 py-2.5 bg-slate-200/60 text-slate-900 placeholder-slate-400 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className={inputClass('prenom')}
                 />
+                <FieldError field="prenom" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold tracking-wider text-slate-700 uppercase mb-1">Nom</label>
                 <input
                   type="text"
                   name="nom"
-                  required
                   placeholder="Nom"
                   value={formData.nom}
                   onChange={handleChange}
-                  className="w-full px-3 py-2.5 bg-slate-200/60 text-slate-900 placeholder-slate-400 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className={inputClass('nom')}
                 />
+                <FieldError field="nom" />
               </div>
             </div>
 
+            {/* TÉLÉPHONE */}
             <div>
-              <label className="block text-[10px] font-bold tracking-wider text-slate-700 uppercase mb-1">Téléphone</label>
+              <label className="block text-[10px] font-bold tracking-wider text-slate-700 uppercase mb-1">
+                Téléphone <span className="text-slate-400 font-normal normal-case">({LONGUEUR_TELEPHONE} chiffres — {PREFIXES_TELEPHONE_VALIDES.join('/')})</span>
+              </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                   <Phone size={16} />
@@ -166,29 +211,33 @@ export default function Register() {
                 <input
                   type="tel"
                   name="telephone"
-                  required
-                  placeholder="77 ... .. .."
+                  placeholder="77 123 45 67"
                   value={formData.telephone}
                   onChange={handleChange}
-                  className="w-full pl-9 pr-3 py-2.5 bg-slate-200/60 text-slate-900 placeholder-slate-400 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  maxLength={LONGUEUR_TELEPHONE}
+                  inputMode="numeric"
+                  className={inputClass('telephone', 'pl-9')}
                 />
               </div>
+              <FieldError field="telephone" />
             </div>
 
+            {/* CODE PIN + ADRESSE */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-bold tracking-wider text-slate-700 uppercase mb-1">Code PIN</label>
+                <label className="block text-[10px] font-bold tracking-wider text-slate-700 uppercase mb-1">
+                  Code PIN <span className="text-slate-400 font-normal normal-case">({LONGUEUR_CODE_PIN} chiffres)</span>
+                </label>
                 <div className="relative">
                   <input
                     type={showPin ? 'text' : 'password'}
                     name="code_pin"
-                    required
-                    maxLength={8}
-                    minLength={4}
+                    maxLength={LONGUEUR_CODE_PIN}
                     placeholder="••••"
                     value={formData.code_pin}
                     onChange={handleChange}
-                    className="w-full pl-3 pr-8 py-2.5 bg-slate-200/60 text-slate-900 placeholder-slate-400 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    inputMode="numeric"
+                    className={inputClass('code_pin', 'pr-8')}
                   />
                   <button
                     type="button"
@@ -198,6 +247,7 @@ export default function Register() {
                     {showPin ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
+                <FieldError field="code_pin" />
               </div>
 
               <div>
@@ -209,16 +259,17 @@ export default function Register() {
                   <input
                     type="text"
                     name="adresse"
-                    required
                     placeholder="Ville, Quartier"
                     value={formData.adresse}
                     onChange={handleChange}
-                    className="w-full pl-8 pr-2.5 py-2.5 bg-slate-200/60 text-slate-900 placeholder-slate-400 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className={inputClass('adresse', 'pl-8')}
                   />
                 </div>
+                <FieldError field="adresse" />
               </div>
             </div>
 
+            {/* RÔLE */}
             <div>
               <label className="block text-[10px] font-bold tracking-wider text-slate-700 uppercase mb-2">Type de profil</label>
               <div className="grid grid-cols-3 gap-2 bg-slate-200/60 p-1 rounded-2xl">
@@ -243,6 +294,7 @@ export default function Register() {
               </div>
             </div>
 
+            {/* CHAMPS LIVREUR */}
             {formData.role === 'livreur' && (
               <div className="p-3 bg-orange-50/50 rounded-2xl border border-orange-100 space-y-3">
                 <label className="block text-[10px] font-bold tracking-wider text-slate-700 uppercase">Véhicule & Immatriculation</label>
@@ -262,13 +314,13 @@ export default function Register() {
                   <input
                     type="text"
                     name="immatriculation"
-                    required={formData.role === 'livreur'}
                     placeholder="AA-000-BB"
                     value={formData.immatriculation}
                     onChange={handleChange}
-                    className="w-full px-3 py-2.5 bg-slate-200/80 text-slate-900 placeholder-slate-400 rounded-xl text-xs uppercase focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className={inputClass('immatriculation', 'uppercase text-xs')}
                   />
                 </div>
+                <FieldError field="immatriculation" />
 
                 <div className="flex items-center justify-between pt-1">
                   <div className="flex items-center gap-2">
@@ -278,7 +330,7 @@ export default function Register() {
                       <p className="text-[9px] text-slate-500">Pour les produits frais</p>
                     </div>
                   </div>
-                  
+
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
@@ -293,10 +345,11 @@ export default function Register() {
               </div>
             )}
 
+            {/* BOUTON */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 px-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold rounded-2xl shadow-lg shadow-orange-500/30 hover:from-orange-600 hover:to-amber-600 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 mt-2"
+              className="w-full py-3.5 px-4 bg-gradient-to-r from-orange-500 to-orange-500 text-white font-bold rounded-2xl shadow-lg shadow-orange-500/30 hover:from-orange-600 hover:to-amber-600 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 mt-2"
             >
               {loading ? 'Inscription en cours...' : "S'inscrire"}
             </button>
