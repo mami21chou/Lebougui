@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ChevronLeft, Trash2, ShoppingBag, Plus, Minus, Loader2,
+  ChevronLeft, Trash2, ShoppingBag, Plus, Minus, Loader2, AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePublications } from '../../context/PublicationContext';
 import { CommandeService } from '../../services/commandeService';
+import { validators } from '../../utils/validators';
 
 
 const fallbackImage = '/images/fallback.png';
@@ -24,7 +25,8 @@ export default function Panier() {
     : 'panier_acheteur_global';
 
   const [panier, setPanier] = useState([]);
-  const [adresse, setAdresse] = useState('');
+  const [adresse, setAdresse] = useState(utilisateur?.adresse || '');
+  const [adresseError, setAdresseError] = useState(null);
   const [chargement, setChargement] = useState(false);
   const [feedback, setFeedback] = useState('');
   // ids (en string) des produits que le serveur a signalés comme indisponibles
@@ -59,6 +61,30 @@ export default function Panier() {
       setPanier([]);
     }
   }, [cartKey]);
+
+  // Pré-remplit l'adresse dès que l'utilisateur est connu
+  useEffect(() => {
+    if (utilisateur?.adresse && !adresse) {
+      setAdresse(utilisateur.adresse);
+    }
+  }, [utilisateur?.adresse]);
+
+  // ═══════════════════════════════════════════════════════════
+  // GESTION DU CHAMP ADRESSE
+  // ═══════════════════════════════════════════════════════════
+  const handleAdresseChange = (e) => {
+    const valeur = e.target.value;
+    setAdresse(valeur);
+
+    // Efface l'erreur si l'utilisateur corrige
+    if (adresseError) setAdresseError(null);
+  };
+
+  // Valide l'adresse au moment où l'utilisateur quitte le champ
+  const handleAdresseBlur = () => {
+    const erreur = validators.adresse(adresse);
+    setAdresseError(erreur);
+  };
 
   // Sauvegarder dans le localStorage à chaque modification
   const sauvegarderEtMettreAJour = (nouveauPanier) => {
@@ -110,15 +136,23 @@ export default function Panier() {
 
   const nbIndispos = panier.filter(estIndispo).length;
 
+  // ═══════════════════════════════════════════════════════════
+  // COMMANDER
+  // ═══════════════════════════════════════════════════════════
   const handleCommander = async () => {
     if (nbIndispos > 0) {
       setFeedback('Retirez les produits indisponibles avant de commander.');
       return;
     }
-    if (!adresse.trim()) {
-      setFeedback('Adresse de livraison requise');
+
+    //  Validation de l'adresse via validators.js
+    const erreurAdresse = validators.adresse(adresse);
+    if (erreurAdresse) {
+      setAdresseError(erreurAdresse);
+      setFeedback('Veuillez vérifier votre adresse de livraison.');
       return;
     }
+
     if (panier.length === 0) {
       setFeedback('Votre panier est vide');
       return;
@@ -126,6 +160,7 @@ export default function Panier() {
 
     setChargement(true);
     setFeedback('');
+    setAdresseError(null);
 
     try {
       const payload = {
@@ -133,7 +168,7 @@ export default function Panier() {
           produit_id: i.id,
           quantite: Number(i.quantite) || 1,
         })),
-        adresse_livraison: adresse,
+        adresse_livraison: adresse.trim(),
       };
       const cmd = await CommandeService.creerCommandeV2(payload);
       vider();
@@ -192,8 +227,9 @@ export default function Panier() {
       ) : (
         <>
           {feedback && (
-            <div className="mb-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
-              {feedback}
+            <div className="mb-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <span>{feedback}</span>
             </div>
           )}
 
@@ -277,17 +313,53 @@ export default function Panier() {
             })}
           </div>
 
+          {/* ═══════════════════════════════════════════════════════════
+              ADRESSE DE LIVRAISON — AVEC VALIDATION
+          ═══════════════════════════════════════════════════════════ */}
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
-            <label className="text-xs font-bold text-slate-600 block mb-2">
-              Adresse de livraison
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-slate-600">
+                Adresse de livraison
+              </label>
+              {utilisateur?.adresse && adresse !== utilisateur.adresse && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdresse(utilisateur.adresse);
+                    setAdresseError(null);
+                  }}
+                  className="text-[10px] font-bold text-[#FF6B4A] hover:underline"
+                >
+                  Utiliser mon adresse
+                </button>
+              )}
+            </div>
+
             <input
               type="text"
               value={adresse}
-              onChange={(e) => setAdresse(e.target.value)}
+              onChange={handleAdresseChange}
+              onBlur={handleAdresseBlur}
               placeholder="Ex: 12 Rue de la Pêche, Dakar"
-              className="w-full px-3 py-2 bg-slate-50 rounded-xl text-sm border border-slate-200 outline-none focus:ring-2 focus:ring-[#FF6B4A]/20"
+              className={`w-full px-3 py-2 bg-slate-50 rounded-xl text-sm border outline-none focus:ring-2 ${
+                adresseError
+                  ? 'border-red-400 ring-2 ring-red-200 focus:ring-red-300'
+                  : 'border-slate-200 focus:ring-[#FF6B4A]/20'
+              }`}
             />
+
+            {adresseError && (
+              <p className="mt-1.5 text-[10px] text-red-600 font-medium flex items-center gap-1">
+                <AlertCircle size={10} />
+                {adresseError}
+              </p>
+            )}
+
+            {!adresseError && utilisateur?.adresse && adresse === utilisateur.adresse && (
+              <p className="mt-1.5 text-[10px] text-emerald-600 font-medium">
+                ✓ Adresse enregistrée
+              </p>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-4 flex justify-between items-center">

@@ -26,16 +26,8 @@ import AcheteurBottomNav from '../../components/AcheteurBottomNav';
 
 
 // ============================================================
-// DONNÉES
+// CATÉGORIES (fixes)
 // ============================================================
-
-const locations = [
-  { id: 'tous', name: 'Toute la côte', icon: MapPin },
-  { id: 'soumbedioune', name: 'Soumbédioune', icon: MapPin },
-  { id: 'yoff', name: 'Yoff', icon: MapPin },
-  { id: 'kayar', name: 'Kayar', icon: MapPin },
-  { id: 'hann', name: 'Hann', icon: MapPin },
-];
 
 const categories = [
   { id: 'tous', name: 'Tout', icon: LayoutGrid },
@@ -69,6 +61,14 @@ const getSellerName = (product) => {
 
 const getSellerInitial = (name) =>
   name.charAt(0).toUpperCase();
+
+// Capitalise la première lettre de chaque mot
+const capitalize = (str) =>
+  str
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
 
 
 // ============================================================
@@ -216,7 +216,37 @@ export default function AcheteurDashboard() {
 
 
   // ==========================================================
-  // FILTRES
+  // ZONES DE PÊCHE DYNAMIQUES
+  // Ne garde que les zones qui ont au moins 1 produit publié
+  // ==========================================================
+
+  const locationsDisponibles = useMemo(() => {
+    const compteur = new Map();
+
+    (publications.produits || []).forEach((product) => {
+      const adresse = (product.adresse || '').trim().toLowerCase();
+      if (!adresse) return;
+      compteur.set(adresse, (compteur.get(adresse) || 0) + 1);
+    });
+
+    const liste = Array.from(compteur.entries())
+      .sort((a, b) => b[1] - a[1]) // tri par nb produits décroissant
+      .map(([zone, count]) => ({
+        id: zone,
+        name: capitalize(zone),
+        icon: MapPin,
+        count,
+      }));
+
+    return [
+      { id: 'tous', name: 'Toute la côte', icon: MapPin, count: 0 },
+      ...liste,
+    ];
+  }, [publications.produits]);
+
+
+  // ==========================================================
+  // FILTRES PRODUITS
   // ==========================================================
 
   const filteredProducts = useMemo(() => {
@@ -236,9 +266,9 @@ export default function AcheteurDashboard() {
 
         const matchesLocation =
           selectedLocation === 'tous' ||
-          product.adresse
-            ?.toLowerCase()
-            .includes(selectedLocation);
+          (product.adresse || '')
+            .toLowerCase()
+            .trim() === selectedLocation;
 
         const matchesCategory =
           selectedCategory === 'tous' ||
@@ -435,7 +465,6 @@ export default function AcheteurDashboard() {
 
         {/* ====================================================
             SIDEBAR DESKTOP
-            INTÉGRÉ À LA PAGE
         ==================================================== */}
 
         <aside
@@ -457,10 +486,6 @@ export default function AcheteurDashboard() {
           "
         >
 
-          {/* ==================================================
-              ZONE LOGO
-          ================================================== */}
-
           <div
             className="
               flex
@@ -473,14 +498,7 @@ export default function AcheteurDashboard() {
             "
           >
 
-            <div
-              className="
-                flex
-                items-center
-                gap-3
-              "
-            >
-
+            <div className="flex items-center gap-3">
 
               <div>
                 <p
@@ -510,19 +528,7 @@ export default function AcheteurDashboard() {
           </div>
 
 
-          {/* ==================================================
-              NAVIGATION PRINCIPALE
-
-              EXACTEMENT LES 4 ÉLÉMENTS DU BOTTOM NAV
-          ================================================== */}
-
-          <nav
-            className="
-              flex-1
-              px-4
-              py-7
-            "
-          >
+          <nav className="flex-1 px-4 py-7">
 
             <p
               className="
@@ -539,15 +545,10 @@ export default function AcheteurDashboard() {
             </p>
 
 
-            {/* =================================================
-                MARCHÉ
-            ================================================= */}
-
+            {/* MARCHÉ */}
             <button
               type="button"
-              onClick={() =>
-                navigate('/acheteur')
-              }
+              onClick={() => navigate('/acheteur')}
               className="
                 group
                 mb-2
@@ -568,7 +569,6 @@ export default function AcheteurDashboard() {
                 hover:bg-white/15
               "
             >
-
               <span
                 className="
                   flex
@@ -588,39 +588,21 @@ export default function AcheteurDashboard() {
               </span>
 
               <div className="flex-1">
-                <p
-                  className="
-                    text-sm
-                    font-bold
-                    text-white
-                  "
-                >
+                <p className="text-sm font-bold text-white">
                   Marché
                 </p>
 
-                <p
-                  className="
-                    mt-0.5
-                    text-[9px]
-                    text-white/35
-                  "
-                >
+                <p className="mt-0.5 text-[9px] text-white/35">
                   Découvrir les produits
                 </p>
               </div>
-
             </button>
 
 
-            {/* =================================================
-                COMMANDES
-            ================================================= */}
-
+            {/* COMMANDES */}
             <button
               type="button"
-              onClick={() =>
-                navigate('/acheteur/commandes')
-              }
+              onClick={() => navigate('/acheteur/commandes')}
               className="
                 group
                 mb-2
@@ -640,7 +622,6 @@ export default function AcheteurDashboard() {
                 hover:bg-white/10
               "
             >
-
               <span
                 className="
                   flex
@@ -673,29 +654,17 @@ export default function AcheteurDashboard() {
                   Commandes
                 </p>
 
-                <p
-                  className="
-                    mt-0.5
-                    text-[9px]
-                    text-white/30
-                  "
-                >
+                <p className="mt-0.5 text-[9px] text-white/30">
                   Suivre mes commandes
                 </p>
               </div>
-
             </button>
 
 
-            {/* =================================================
-                ALERTES
-            ================================================= */}
-
+            {/* ALERTES */}
             <button
               type="button"
-              onClick={() =>
-                navigate('/acheteur/alertes')
-              }
+              onClick={() => navigate('/acheteur/alertes')}
               className="
                 group
                 mb-2
@@ -715,7 +684,6 @@ export default function AcheteurDashboard() {
                 hover:bg-white/10
               "
             >
-
               <span
                 className="
                   relative
@@ -733,14 +701,7 @@ export default function AcheteurDashboard() {
                   group-hover:text-white
                 "
               >
-
                 <Bell size={18} />
-
-                {/* Badge notification */}
-                <span
-                  
-                />
-
               </span>
 
               <div className="flex-1">
@@ -756,29 +717,17 @@ export default function AcheteurDashboard() {
                   Alertes
                 </p>
 
-                <p
-                  className="
-                    mt-0.5
-                    text-[9px]
-                    text-white/30
-                  "
-                >
+                <p className="mt-0.5 text-[9px] text-white/30">
                   Notifications et nouveautés
                 </p>
               </div>
-
             </button>
 
 
-            {/* =================================================
-                PREMIUM
-            ================================================= */}
-
+            {/* PREMIUM */}
             <button
               type="button"
-              onClick={() =>
-                navigate('/acheteur/premium')
-              }
+              onClick={() => navigate('/acheteur/premium')}
               className="
                 group
                 flex
@@ -797,7 +746,6 @@ export default function AcheteurDashboard() {
                 hover:bg-white/10
               "
             >
-
               <span
                 className="
                   flex
@@ -831,34 +779,17 @@ export default function AcheteurDashboard() {
                   Premium
                 </p>
 
-                <p
-                  className="
-                    mt-0.5
-                    text-[9px]
-                    text-white/30
-                  "
-                >
+                <p className="mt-0.5 text-[9px] text-white/30">
                   Profiter des avantages
                 </p>
               </div>
-
             </button>
 
           </nav>
 
 
-          {/* ==================================================
-              PROFIL EN BAS
-          ================================================== */}
-
-          <div
-            className="
-              shrink-0
-              border-t
-              border-white/10
-              p-4
-            "
-          >
+          {/* PROFIL */}
+          <div className="shrink-0 border-t border-white/10 p-4">
 
             <div
               className="
@@ -873,7 +804,6 @@ export default function AcheteurDashboard() {
                 backdrop-blur-xl
               "
             >
-
               <div
                 className="
                   flex
@@ -897,7 +827,6 @@ export default function AcheteurDashboard() {
               </div>
 
               <div className="min-w-0">
-
                 <p
                   className="
                     truncate
@@ -906,22 +835,13 @@ export default function AcheteurDashboard() {
                     text-white
                   "
                 >
-                  {utilisateur?.prenom ||
-                    'Acheteur'}
+                  {utilisateur?.prenom || 'Acheteur'}
                 </p>
 
-                <p
-                  className="
-                    mt-0.5
-                    text-[9px]
-                    text-white/35
-                  "
-                >
+                <p className="mt-0.5 text-[9px] text-white/35">
                   Acheteur
                 </p>
-
               </div>
-
             </div>
 
           </div>
@@ -945,10 +865,6 @@ export default function AcheteurDashboard() {
           "
         >
 
-          {/* ==================================================
-              HEADER
-          ================================================== */}
-
           <div
             className="
               lg:mx-auto
@@ -956,7 +872,6 @@ export default function AcheteurDashboard() {
               lg:px-8
             "
           >
-
             <AcheteurHeader
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
@@ -970,85 +885,100 @@ export default function AcheteurDashboard() {
               cartCount={cartCount}
               locationLabel="Dakar, Plateau"
             />
-
           </div>
 
 
           {/* ==================================================
-              ZONES DE PÊCHE
+              ZONES DE PÊCHE DYNAMIQUES
           ================================================== */}
 
-          <section
-            className="
-              no-scrollbar
-              flex
-              gap-2
-              overflow-x-auto
-              px-4
-              pb-3
-              pt-4
+          {locationsDisponibles.length > 1 && (
+            <section
+              className="
+                no-scrollbar
+                flex
+                gap-2
+                overflow-x-auto
+                px-4
+                pb-3
+                pt-4
 
-              lg:mx-auto
-              lg:max-w-[1500px]
-              lg:px-8
-              lg:pt-5
-            "
-          >
+                lg:mx-auto
+                lg:max-w-[1500px]
+                lg:px-8
+                lg:pt-5
+              "
+            >
 
-            {locations.map(
-              ({
-                id,
-                name,
-                icon: Icon,
-              }) => {
+              {locationsDisponibles.map(
+                ({ id, name, icon: Icon, count }) => {
 
-                const active =
-                  selectedLocation === id;
+                  const active = selectedLocation === id;
 
-                return (
-                  <button
-                    type="button"
-                    key={id}
-                    onClick={() =>
-                      setSelectedLocation(id)
-                    }
-                    className={`
-                      flex
-                      shrink-0
-                      items-center
-                      gap-1.5
-                      rounded-full
-                      px-3.5
-                      py-1.5
-                      text-xs
-                      font-semibold
-                      transition
+                  return (
+                    <button
+                      type="button"
+                      key={id}
+                      onClick={() => setSelectedLocation(id)}
+                      className={`
+                        flex
+                        shrink-0
+                        items-center
+                        gap-1.5
+                        rounded-full
+                        px-3.5
+                        py-1.5
+                        text-xs
+                        font-semibold
+                        transition
 
-                      ${
-                        active
-                          ? 'bg-[#0C3B4A] text-white'
-                          : 'bg-white text-stone-500 hover:text-stone-800'
-                      }
-                    `}
-                  >
+                        ${
+                          active
+                            ? 'bg-[#0C3B4A] text-white'
+                            : 'bg-white text-stone-500 hover:text-stone-800'
+                        }
+                      `}
+                    >
 
-                    <Icon
-                      size={13}
-                      className={
-                        active
-                          ? 'text-[#5FD9C4]'
-                          : 'text-stone-400'
-                      }
-                    />
+                      <Icon
+                        size={13}
+                        className={
+                          active
+                            ? 'text-[#5FD9C4]'
+                            : 'text-stone-400'
+                        }
+                      />
 
-                    {name}
+                      {name}
 
-                  </button>
-                );
-              }
-            )}
+                      {count > 0 && (
+                        <span
+                          className={`
+                            ml-1
+                            rounded-full
+                            px-1.5
+                            py-0.5
+                            text-[9px]
+                            font-bold
 
-          </section>
+                            ${
+                              active
+                                ? 'bg-white/20 text-white'
+                                : 'bg-stone-100 text-stone-500'
+                            }
+                          `}
+                        >
+                          {count}
+                        </span>
+                      )}
+
+                    </button>
+                  );
+                }
+              )}
+
+            </section>
+          )}
 
 
           {/* ==================================================
@@ -1071,22 +1001,15 @@ export default function AcheteurDashboard() {
           >
 
             {categories.map(
-              ({
-                id,
-                name,
-                icon: Icon,
-              }) => {
+              ({ id, name, icon: Icon }) => {
 
-                const active =
-                  selectedCategory === id;
+                const active = selectedCategory === id;
 
                 return (
                   <button
                     type="button"
                     key={id}
-                    onClick={() =>
-                      setSelectedCategory(id)
-                    }
+                    onClick={() => setSelectedCategory(id)}
                     className={`
                       flex
                       items-center
@@ -1106,9 +1029,7 @@ export default function AcheteurDashboard() {
                     `}
                   >
 
-                    {Icon && (
-                      <Icon size={14} />
-                    )}
+                    {Icon && <Icon size={14} />}
 
                     {name}
 
@@ -1152,9 +1073,7 @@ export default function AcheteurDashboard() {
                 "
               >
 
-                {Array.from({
-                  length: 4,
-                }).map((_, i) => (
+                {Array.from({ length: 4 }).map((_, i) => (
 
                   <div
                     key={i}
@@ -1208,12 +1127,7 @@ export default function AcheteurDashboard() {
 
             ) : filteredProducts.length === 0 ? (
 
-              <div
-                className="
-                  py-16
-                  text-center
-                "
-              >
+              <div className="py-16 text-center">
 
                 <div
                   className="
@@ -1272,427 +1186,402 @@ export default function AcheteurDashboard() {
                 "
               >
 
-                {filteredProducts.map(
-                  (product) => {
+                {filteredProducts.map((product) => {
 
-                    const sellerName =
-                      getSellerName(product);
+                  const sellerName = getSellerName(product);
 
-                    const panierItem =
-                      panier.find(
-                        (item) =>
-                          String(item.id) ===
-                          String(product.id)
-                      );
+                  const panierItem = panier.find(
+                    (item) =>
+                      String(item.id) === String(product.id)
+                  );
 
-                    const isInCart =
-                      !!panierItem;
+                  const isInCart = !!panierItem;
 
-                    const disponible =
-                      estDisponible(product);
+                  const disponible = estDisponible(product);
 
-                    const audioId =
-                      `prod-${product.id}`;
+                  const audioId = `prod-${product.id}`;
 
-                    const isPlaying =
-                      audioEnCours === audioId;
+                  const isPlaying = audioEnCours === audioId;
 
 
-                    return (
+                  return (
+
+                    <div
+                      key={product.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() =>
+                        navigate(
+                          `/acheteur/produit/${product.id}`
+                        )
+                      }
+                      onKeyDown={(e) =>
+                        e.key === 'Enter' &&
+                        navigate(
+                          `/acheteur/produit/${product.id}`
+                        )
+                      }
+                      className="
+                        group
+                        cursor-pointer
+                        overflow-hidden
+                        rounded-[22px]
+                        bg-white
+                        shadow-sm
+                        shadow-black/5
+                        transition
+                        active:scale-[0.98]
+                        lg:hover:-translate-y-1
+                        lg:hover:shadow-lg
+                      "
+                    >
 
                       <div
-                        key={product.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() =>
-                          navigate(
-                            `/acheteur/produit/${product.id}`
-                          )
-                        }
-                        onKeyDown={(e) =>
-                          e.key === 'Enter' &&
-                          navigate(
-                            `/acheteur/produit/${product.id}`
-                          )
-                        }
                         className="
-                          group
-                          cursor-pointer
+                          relative
+                          aspect-[4/5]
+                          w-full
                           overflow-hidden
-                          rounded-[22px]
-                          bg-white
-                          shadow-sm
-                          shadow-black/5
-                          transition
-                          active:scale-[0.98]
-                          lg:hover:-translate-y-1
-                          lg:hover:shadow-lg
+                          bg-stone-200
                         "
                       >
 
+                        <img
+                          src={
+                            product.media ||
+                            product.image ||
+                            fallbackImage
+                          }
+                          alt={product.nom}
+                          className={`
+                            h-full
+                            w-full
+                            object-cover
+                            transition
+                            duration-300
+                            group-hover:scale-105
+
+                            ${
+                              disponible
+                                ? ''
+                                : 'grayscale opacity-60'
+                            }
+                          `}
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = fallbackImage;
+                          }}
+                        />
+
                         <div
                           className="
-                            relative
-                            aspect-[4/5]
-                            w-full
-                            overflow-hidden
-                            bg-stone-200
+                            pointer-events-none
+                            absolute
+                            inset-x-0
+                            bottom-0
+                            h-16
+                            bg-gradient-to-t
+                            from-black/55
+                            to-transparent
+                          "
+                        />
+
+                        {product.audio && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleAudio(product);
+                            }}
+                            aria-label={
+                              isPlaying
+                                ? 'Pause'
+                                : 'Lecture de la note vocale'
+                            }
+                            className={`
+                              absolute
+                              left-2
+                              top-2
+                              flex
+                              h-7
+                              w-7
+                              items-center
+                              justify-center
+                              rounded-full
+                              backdrop-blur-sm
+                              transition
+
+                              ${
+                                isPlaying
+                                  ? 'bg-[#FF6B4A] text-white'
+                                  : 'bg-black/45 text-white hover:bg-black/60'
+                              }
+                            `}
+                          >
+                            {isPlaying ? (
+                              <Pause
+                                size={11}
+                                fill="currentColor"
+                              />
+                            ) : (
+                              <Play
+                                size={11}
+                                fill="currentColor"
+                              />
+                            )}
+                          </button>
+                        )}
+
+                        {!disponible && (
+                          <span
+                            className="
+                              absolute
+                              right-2
+                              top-2
+                              rounded-full
+                              bg-rose-600
+                              px-2
+                              py-0.5
+                              text-[9px]
+                              font-bold
+                              text-white
+                            "
+                          >
+                            Épuisé
+                          </span>
+                        )}
+
+                        <div
+                          className="
+                            absolute
+                            inset-x-2
+                            bottom-2
+                            flex
+                            items-center
+                            gap-1.5
                           "
                         >
 
-                          <img
-                            src={
-                              product.media ||
-                              product.image ||
-                              fallbackImage
-                            }
-                            alt={product.nom}
-                            className={`
-                              h-full
-                              w-full
-                              object-cover
-                              transition
-                              duration-300
-                              group-hover:scale-105
+                          <div
+                            className="
+                              flex
+                              h-5
+                              w-5
+                              shrink-0
+                              items-center
+                              justify-center
+                              overflow-hidden
+                              rounded-full
+                              border
+                              border-white/50
+                              bg-[#0C3B4A]
+                              text-[9px]
+                              font-bold
+                              text-white
+                            "
+                          >
 
-                              ${
-                                disponible
-                                  ? ''
-                                  : 'grayscale opacity-60'
-                              }
-                            `}
-                            onError={(e) => {
-                              e.target.onerror =
-                                null;
+                            {product.pecheur?.photo ? (
+                              <img
+                                src={product.pecheur.photo}
+                                alt=""
+                                className="
+                                  h-full
+                                  w-full
+                                  object-cover
+                                "
+                              />
+                            ) : (
+                              getSellerInitial(sellerName)
+                            )}
 
-                              e.target.src =
-                                fallbackImage;
-                            }}
-                          />
+                          </div>
+
+                          <span
+                            className="
+                              truncate
+                              text-[10px]
+                              font-semibold
+                              text-white/90
+                            "
+                          >
+                            {sellerName}
+                          </span>
+
+                          {product.pecheur?.est_premium && (
+                            <BadgeCheck
+                              size={11}
+                              className="
+                                shrink-0
+                                text-[#5FD9C4]
+                              "
+                            />
+                          )}
+
+                        </div>
+
+                      </div>
+
+
+                      <div className="p-2.5">
+
+                        <h2
+                          className="
+                            font-display
+                            truncate
+                            text-[13px]
+                            font-bold
+                            leading-tight
+                            text-stone-900
+                          "
+                        >
+                          {product.nom}
+                        </h2>
+
+                        <p
+                          className="
+                            mt-0.5
+                            truncate
+                            text-[10px]
+                            font-medium
+                            text-stone-400
+                          "
+                        >
+                          {product.adresse || 'Dakar'}
+                        </p>
+
+
+                        <div
+                          className="
+                            mt-2
+                            flex
+                            items-end
+                            justify-between
+                            gap-1
+                          "
+                        >
+
+                          <div className="min-w-0">
+
+                            <p
+                              className={`
+                                font-display
+                                truncate
+                                text-sm
+                                font-bold
+                                leading-none
+
+                                ${
+                                  disponible
+                                    ? 'text-stone-900'
+                                    : 'text-stone-400'
+                                }
+                              `}
+                            >
+                              {formatPrice(product.prix)}
+                            </p>
+
+                            <p
+                              className="
+                                mt-0.5
+                                text-[9px]
+                                font-medium
+                                text-stone-400
+                              "
+                            >
+                              / {product.unite || 'kg'}
+                            </p>
+
+                          </div>
+
 
                           <div
                             className="
-                              pointer-events-none
-                              absolute
-                              inset-x-0
-                              bottom-0
-                              h-16
-                              bg-gradient-to-t
-                              from-black/55
-                              to-transparent
+                              flex
+                              shrink-0
+                              items-center
+                              gap-1
                             "
-                          />
+                          >
 
-                          {product.audio && (
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleAudio(product);
+                                handleCommanderClick(product);
                               }}
+                              disabled={!disponible}
                               aria-label={
-                                isPlaying
-                                  ? 'Pause'
-                                  : 'Lecture de la note vocale'
+                                `Commander ${product.nom} maintenant`
                               }
                               className={`
-                                absolute
-                                left-2
-                                top-2
                                 flex
                                 h-7
                                 w-7
                                 items-center
                                 justify-center
                                 rounded-full
-                                backdrop-blur-sm
+                                border
                                 transition
 
                                 ${
-                                  isPlaying
-                                    ? 'bg-[#FF6B4A] text-white'
-                                    : 'bg-black/45 text-white hover:bg-black/60'
+                                  disponible
+                                    ? 'border-stone-200 text-stone-600 hover:border-[#0C3B4A] hover:text-[#0C3B4A]'
+                                    : 'cursor-not-allowed border-stone-100 text-stone-300'
                                 }
                               `}
                             >
-                              {isPlaying ? (
-                                <Pause
-                                  size={11}
-                                  fill="currentColor"
-                                />
-                              ) : (
-                                <Play
-                                  size={11}
-                                  fill="currentColor"
-                                />
-                              )}
+                              <ArrowUpRight size={13} />
                             </button>
-                          )}
 
-                          {!disponible && (
-                            <span
-                              className="
-                                absolute
-                                right-2
-                                top-2
-                                rounded-full
-                                bg-rose-600
-                                px-2
-                                py-0.5
-                                text-[9px]
-                                font-bold
-                                text-white
-                              "
-                            >
-                              Épuisé
-                            </span>
-                          )}
 
-                          <div
-                            className="
-                              absolute
-                              inset-x-2
-                              bottom-2
-                              flex
-                              items-center
-                              gap-1.5
-                            "
-                          >
-
-                            <div
-                              className="
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePlusClick(product);
+                              }}
+                              disabled={!disponible}
+                              aria-label={
+                                disponible
+                                  ? `Ajouter ${product.nom} au panier`
+                                  : `${product.nom} indisponible`
+                              }
+                              className={`
                                 flex
-                                h-5
-                                w-5
-                                shrink-0
+                                h-7
+                                w-7
                                 items-center
                                 justify-center
-                                overflow-hidden
                                 rounded-full
-                                border
-                                border-white/50
-                                bg-[#0C3B4A]
-                                text-[9px]
-                                font-bold
-                                text-white
-                              "
-                            >
+                                shadow-sm
+                                transition
 
-                              {product.pecheur?.photo ? (
-                                <img
-                                  src={
-                                    product.pecheur.photo
-                                  }
-                                  alt=""
-                                  className="
-                                    h-full
-                                    w-full
-                                    object-cover
-                                  "
-                                />
+                                ${
+                                  !disponible
+                                    ? 'cursor-not-allowed bg-stone-100 text-stone-300'
+                                    : isInCart
+                                    ? 'bg-emerald-500 text-white'
+                                    : 'bg-[#FF6B4A] text-white hover:bg-[#E85A39]'
+                                }
+                              `}
+                            >
+                              {isInCart ? (
+                                <Check size={13} />
                               ) : (
-                                getSellerInitial(
-                                  sellerName
-                                )
+                                <Plus size={13} />
                               )}
-
-                            </div>
-
-                            <span
-                              className="
-                                truncate
-                                text-[10px]
-                                font-semibold
-                                text-white/90
-                              "
-                            >
-                              {sellerName}
-                            </span>
-
-                            {product.pecheur
-                              ?.est_premium && (
-                              <BadgeCheck
-                                size={11}
-                                className="
-                                  shrink-0
-                                  text-[#5FD9C4]
-                                "
-                              />
-                            )}
-
-                          </div>
-
-                        </div>
-
-
-                        <div className="p-2.5">
-
-                          <h2
-                            className="
-                              font-display
-                              truncate
-                              text-[13px]
-                              font-bold
-                              leading-tight
-                              text-stone-900
-                            "
-                          >
-                            {product.nom}
-                          </h2>
-
-                          <p
-                            className="
-                              mt-0.5
-                              truncate
-                              text-[10px]
-                              font-medium
-                              text-stone-400
-                            "
-                          >
-                            {product.adresse || 'Dakar'}
-                          </p>
-
-
-                          <div
-                            className="
-                              mt-2
-                              flex
-                              items-end
-                              justify-between
-                              gap-1
-                            "
-                          >
-
-                            <div className="min-w-0">
-
-                              <p
-                                className={`
-                                  font-display
-                                  truncate
-                                  text-sm
-                                  font-bold
-                                  leading-none
-
-                                  ${
-                                    disponible
-                                      ? 'text-stone-900'
-                                      : 'text-stone-400'
-                                  }
-                                `}
-                              >
-                                {formatPrice(
-                                  product.prix
-                                )}
-                              </p>
-
-                              <p
-                                className="
-                                  mt-0.5
-                                  text-[9px]
-                                  font-medium
-                                  text-stone-400
-                                "
-                              >
-                                / {product.unite || 'kg'}
-                              </p>
-
-                            </div>
-
-
-                            <div
-                              className="
-                                flex
-                                shrink-0
-                                items-center
-                                gap-1
-                              "
-                            >
-
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCommanderClick(
-                                    product
-                                  );
-                                }}
-                                disabled={!disponible}
-                                aria-label={
-                                  `Commander ${product.nom} maintenant`
-                                }
-                                className={`
-                                  flex
-                                  h-7
-                                  w-7
-                                  items-center
-                                  justify-center
-                                  rounded-full
-                                  border
-                                  transition
-
-                                  ${
-                                    disponible
-                                      ? 'border-stone-200 text-stone-600 hover:border-[#0C3B4A] hover:text-[#0C3B4A]'
-                                      : 'cursor-not-allowed border-stone-100 text-stone-300'
-                                  }
-                                `}
-                              >
-                                <ArrowUpRight
-                                  size={13}
-                                />
-                              </button>
-
-
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handlePlusClick(
-                                    product
-                                  );
-                                }}
-                                disabled={!disponible}
-                                aria-label={
-                                  disponible
-                                    ? `Ajouter ${product.nom} au panier`
-                                    : `${product.nom} indisponible`
-                                }
-                                className={`
-                                  flex
-                                  h-7
-                                  w-7
-                                  items-center
-                                  justify-center
-                                  rounded-full
-                                  shadow-sm
-                                  transition
-
-                                  ${
-                                    !disponible
-                                      ? 'cursor-not-allowed bg-stone-100 text-stone-300'
-                                      : isInCart
-                                      ? 'bg-emerald-500 text-white'
-                                      : 'bg-[#FF6B4A] text-white hover:bg-[#E85A39]'
-                                  }
-                                `}
-                              >
-                                {isInCart ? (
-                                  <Check size={13} />
-                                ) : (
-                                  <Plus size={13} />
-                                )}
-                              </button>
-
-                            </div>
+                            </button>
 
                           </div>
 
                         </div>
 
                       </div>
-                    );
-                  }
-                )}
+
+                    </div>
+                  );
+                })}
 
               </div>
             )}
@@ -1704,7 +1593,6 @@ export default function AcheteurDashboard() {
 
         {/* ====================================================
             BOTTOM NAV MOBILE
-            100% CONSERVÉ
         ==================================================== */}
 
         <div className="lg:hidden">
@@ -1751,9 +1639,7 @@ export default function AcheteurDashboard() {
               "
             />
 
-            <span>
-              {toastMessage}
-            </span>
+            <span>{toastMessage}</span>
 
           </div>
         )}
@@ -1762,4 +1648,3 @@ export default function AcheteurDashboard() {
     </div>
   );
 }
-

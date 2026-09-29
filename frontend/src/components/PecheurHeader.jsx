@@ -83,7 +83,7 @@ export default function PecheurHeader({
                 className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-[#FAF6F0] transition hover:bg-white/20"
               >
                 <Bell size={17} />
-                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#FF6B4A] ring-2 ring-[#0C3B4A]" />
+                <span className="absolute right-2 top-2 h-2 w-2 ]" />
               </button>
             )}
             {rightIcon !== 'bell' && rightIcon !== 'none' && rightIcon}
