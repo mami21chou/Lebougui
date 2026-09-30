@@ -3,7 +3,6 @@ from rest_framework.serializers import ModelSerializer, Serializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from .models import Utilisateur, ProfilPecheur, ProfilLivreur, Vehicule, Premium
-from rest_framework import serializers
 from django.utils import timezone
 from datetime import timedelta
 from commandes.models import Note
@@ -47,8 +46,8 @@ class ProfilLivreurSerializer(serializers.ModelSerializer):
         ]
 
 
-
 class PremiumSerializer(serializers.ModelSerializer):
+    """Serializer de LECTURE d'un Premium."""
     fonction_display = serializers.CharField(
         source="get_fonction_display", read_only=True
     )
@@ -190,52 +189,6 @@ class ConnexionSerializer(Serializer):
                 'access':str(refresh.access_token)
             }
         }
-
-
-
-
-
-class PremiumSouscriptionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Premium
-        fields = ["id", "fonction", "statut", "date_obtention", "date_expiration"]
-        read_only_fields = ["id", "statut", "date_obtention", "date_expiration"]
-
-    def create(self, validated_data):
-        utilisateur = self.context["request"].user
-        # Attribue automatiquement l'utilisateur connecté
-        premium, _ = Premium.objects.get_or_create(
-            utilisateur=utilisateur,
-            fonction=validated_data["fonction"],
-            defaults={"statut": Premium.Statut.EN_ATTENTE}
-        )
-        return premium    
-
-
-
-class PremiumSerializer(serializers.ModelSerializer):
-    """Serializer de LECTURE d'un Premium."""
-    fonction_display = serializers.CharField(
-        source="get_fonction_display", read_only=True
-    )
-    statut_display = serializers.CharField(
-        source="get_statut_display", read_only=True
-    )
-
-    class Meta:
-        model = Premium
-        fields = [
-            "id",
-            "fonction",
-            "fonction_display",
-            "statut",
-            "statut_display",
-            "date_obtention",
-            "date_expiration",
-            "validation_auto",
-            "motif_validation",
-            "duree_mois",
-        ]
 
 
 class PremiumSouscriptionSerializer(serializers.Serializer):
