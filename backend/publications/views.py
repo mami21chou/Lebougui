@@ -2,7 +2,7 @@
 App : publications
 Fichier : views.py
 """
-
+from .services import geocoder_adresse  
 from django.shortcuts import get_object_or_404
 from rest_framework import status, permissions
 from rest_framework.response import Response
@@ -176,20 +176,19 @@ class ChangerStatutProduitView(APIView):
         return Response(ProduitSerializer(produit).data, status=status.HTTP_200_OK)
 
 
+
+
+
 class PublierView(APIView):
     """
     ÉTAPE UNIQUE côté pêcheur : reçoit audio + média, appelle l'IA,
-    enregistre DIRECTEMENT en base la publication (Produit ou Information),
-    et renvoie l'objet créé. Le pêcheur n'a rien à saisir :
-    tout (nom, prix, quantité, adresse, description) vient de l'IA.
-    Le statut de modération est décidé automatiquement par
-    Publication.regle_moderation (visible si score >= 0.70, sinon en_attente).
+    enregistre DIRECTEMENT en base la publication (Produit ou Information).
     """
     permission_classes = [EstPecheur]
 
     def post(self, request):
         audio = request.FILES.get("audio")
-        media = request.FILES.get("media")  # peut être None
+        media = request.FILES.get("media")
 
         if not audio:
             return Response(
@@ -210,21 +209,41 @@ class PublierView(APIView):
         suggestion = analyse.get("suggestion", {}) or {}
         score = analyse.get("score_confiance", 0.0)
 
-        # ---- 2. Construction du payload pour le serializer ----
+        # ═══ 2. Détermination adresse + coordonnées ═══
+        adresse = suggestion.get("adresse") or "Non précisé"
+
+        # Priorité 1 : zone détectée par l'IA → géocodage
+        lat, lng = None, None
+        if adresse != "Non précisé":
+            lat, lng = geocoder_adresse(adresse)
+
+        # Priorité 2 : GPS du navigateur envoyé par le front
+        if not lat or not lng:
+            lat = request.data.get("latitude")
+            lng = request.data.get("longitude")
+            if lat and lng:
+                print(f">>> [GPS FRONT] ({lat}, {lng})")
+
+        # Priorité 3 : fallback Dakar centre
+        if not lat or not lng:
+            lat, lng = 14.6928, -17.4467
+            adresse = "Dakar"
+            print(">>> [FALLBACK] Zone inconnue → Dakar par défaut")
+
+        # ---- 3. Construction du payload pour le serializer ----
         base = {
             "audio": audio,
-            "adresse": suggestion.get("adresse") or "Non précisé",
-            "latitude": suggestion.get("latitude"),
-            "longitude": suggestion.get("longitude"),
+            "adresse": adresse,
+            "latitude": lat,
+            "longitude": lng,
             "texte_transcrit": analyse.get("texte_transcrit", ""),
             "texte_traduit": analyse.get("texte_traduit", ""),
             "score_confiance_ia": score,
         }
 
-        # ---- 3. Enregistrement ----
+        # ---- 4. Enregistrement ----
         if type_pub == "produit":
             if not media:
-                # Sécurité : pas de photo => on retombe sur Information
                 type_pub = "information"
 
         if type_pub == "produit":
@@ -252,7 +271,7 @@ class PublierView(APIView):
         serializer.is_valid(raise_exception=True)
         publication = serializer.save()
 
-        # ---- 4. Notification Premium (uniquement pour Produit) ----
+        # ---- 5. Notification Premium (uniquement pour Produit) ----
         if type_pub == "produit":
             try:
                 alertes_matching = Alerte.objects.filter(
@@ -288,7 +307,7 @@ class PublierView(APIView):
             except Exception as e:
                 print(">>> webhook n8n non envoyé :", e)
 
-        # ---- 5. Réponse ----
+        # ---- 6. Réponse ----
         if type_pub == "produit":
             data = ProduitSerializer(publication).data
         else:
@@ -303,3 +322,4 @@ class PublierView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+

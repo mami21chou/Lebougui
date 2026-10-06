@@ -12,6 +12,7 @@ from publications.models import Produit
 from publications.serializers import ProduitSerializer
 from .models import Commande, ProduitCommande, Note, Alerte, Livraison
 from utilisateurs.models import Utilisateur  
+from publications.services import geocoder_adresse 
 # =========================================================
 # COMMANDE — LECTURE
 # =========================================================
@@ -90,17 +91,27 @@ class CommandeCreateSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
+
         lignes = validated_data.pop("lignes")
         produits = validated_data.pop("_produits")
         premier_produit = next(iter(produits.values()))
         acheteur = self.context["request"].user
+
+        # ═══ Géocodage de l'adresse de livraison si pas de GPS ═══
+        if (not validated_data.get("latitude_livraison")
+                and validated_data.get("adresse_livraison")):
+            lat, lng = geocoder_adresse(validated_data["adresse_livraison"])
+            if lat and lng:
+                validated_data["latitude_livraison"] = lat
+                validated_data["longitude_livraison"] = lng
+                print(f">>> [GEOCODAGE CMD] {validated_data['adresse_livraison']} → ({lat}, {lng})")
 
         commande = Commande.objects.create(
             acheteur=acheteur,
             pecheur=premier_produit.pecheur,
             numero=f"CMD-{uuid.uuid4().hex[:10].upper()}",
             statut=Commande.Statut.EN_ATTENTE_PECHEUR,
-            **validated_data,  # adresse_livraison, latitude_livraison, longitude_livraison
+            **validated_data,
         )
 
         for ligne in lignes:
