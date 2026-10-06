@@ -38,8 +38,6 @@ export default function LivreurDashboard() {
 
   // ═══════════════════════════════════════════════════════════
   // 1. INITIALISATION DU STATUT "EN LIGNE"
-  //    - Si le livreur a déjà un choix mémorisé → on le reprend
-  //    - Sinon → on le met EN LIGNE par défaut (à sa 1ère visite)
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (!userId) return;
@@ -47,19 +45,17 @@ export default function LivreurDashboard() {
     const choixMemorise = localStorage.getItem(dispoKey);
     const dispoBackend = utilisateur?.profil_livreur?.disponible;
 
-    // Priorité : backend si présent, sinon localStorage, sinon true
     let etatInitial;
     if (dispoBackend === true || dispoBackend === false) {
       etatInitial = dispoBackend;
     } else if (choixMemorise !== null) {
       etatInitial = choixMemorise === 'true';
     } else {
-      etatInitial = true; // ← En ligne par défaut à la 1ère ouverture
+      etatInitial = true;
     }
 
     setDisponible(etatInitial);
 
-    // Synchroniser silencieusement avec le backend si différent
     if (dispoBackend !== etatInitial) {
       CommandeService.toggleDisponible(etatInitial).catch(() => {});
     }
@@ -67,7 +63,6 @@ export default function LivreurDashboard() {
 
   // ═══════════════════════════════════════════════════════════
   // 2. CHARGEMENT DE LA LIVRAISON EN COURS
-  //    Rechargé à chaque focus de la page + polling 15s
   // ═══════════════════════════════════════════════════════════
   const loadEnCours = useCallback(async () => {
     try {
@@ -82,7 +77,6 @@ export default function LivreurDashboard() {
     loadEnCours();
     const interval = setInterval(loadEnCours, 15000);
 
-    // Recharger quand l'utilisateur revient sur l'onglet
     const onFocus = () => loadEnCours();
     window.addEventListener('focus', onFocus);
 
@@ -146,7 +140,6 @@ export default function LivreurDashboard() {
         localStorage.setItem(dispoKey, String(res.disponible));
       }
     } catch {
-      // Rollback en cas d'échec réseau
       setDisponible(!nouveau);
       localStorage.setItem(dispoKey, String(!nouveau));
       setFeedback('Impossible de changer la disponibilité.');
@@ -154,9 +147,34 @@ export default function LivreurDashboard() {
   };
 
   // ═══════════════════════════════════════════════════════════
-  // 5. REGROUPEMENT PAR ZONE (amélioré)
-  //    On compare sur le 1er mot de l'adresse (zone), pas la
-  //    chaîne entière, pour éviter les faux négatifs.
+  // 5. ENVOI DE LA POSITION GPS EN CONTINU
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (!navigator.geolocation || !disponible || !utilisateur) return;
+
+    const envoyerPosition = (pos) => {
+      CommandeService.mettreAJourPosition(
+        pos.coords.latitude,
+        pos.coords.longitude
+      ).catch(() => {});
+    };
+
+    navigator.geolocation.getCurrentPosition(envoyerPosition, () => {}, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+    });
+
+    const watch = navigator.geolocation.watchPosition(envoyerPosition, () => {}, {
+      enableHighAccuracy: true,
+      maximumAge: 15000,
+      timeout: 15000,
+    });
+
+    return () => navigator.geolocation.clearWatch(watch);
+  }, [disponible, utilisateur]);
+
+  // ═══════════════════════════════════════════════════════════
+  // 6. REGROUPEMENT PAR ZONE
   // ═══════════════════════════════════════════════════════════
   const toggleSelection = (cmd) => {
     setSelection((prev) => {
@@ -170,14 +188,12 @@ export default function LivreurDashboard() {
       if (prev.length > 0) {
         const ref = prev[0];
 
-        // Même pêcheur obligatoire
         if (ref.pecheur !== cmd.pecheur) {
           setFeedback('Toutes les commandes doivent venir du même pêcheur.');
           setTimeout(() => setFeedback(''), 3000);
           return prev;
         }
 
-        // Même zone : on compare sur la zone extraite
         const zoneRef = extraireZone(ref.adresse_livraison);
         const zoneCmd = extraireZone(cmd.adresse_livraison);
 
@@ -197,7 +213,7 @@ export default function LivreurDashboard() {
   };
 
   // ═══════════════════════════════════════════════════════════
-  // 6. ACCEPTER LA SÉLECTION
+  // 7. ACCEPTER LA SÉLECTION
   // ═══════════════════════════════════════════════════════════
   const accepter = async () => {
     if (selection.length === 0) return;
@@ -212,8 +228,14 @@ export default function LivreurDashboard() {
     }
   };
 
-  const totalGain = selection.reduce((s, c) => s + 500, 0);
-  const nbCommandesEnCours = enCours?.commandes_detail?.length || enCours?.commandes?.length || 0;
+  // ═══ Gain total dynamique ═══
+  const totalGain = selection.reduce(
+    (s, c) => s + Number(c.frais_livraison_estime || 500),
+    0
+  );
+
+  const nbCommandesEnCours =
+    enCours?.commandes_detail?.length || enCours?.commandes?.length || 0;
 
   return (
     <div className="min-h-screen bg-stone-300 font-sans antialiased sm:flex sm:items-center sm:justify-center sm:py-6">
@@ -235,15 +257,15 @@ export default function LivreurDashboard() {
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 min-w-0">
-  <h1 className="truncate text-base font-extrabold leading-tight text-white">
-    {utilisateur?.prenom} {utilisateur?.nom}
-  </h1>
-  {utilisateur?.status_premium?.some(
-    (p) => p.statut === 'actif' && p.fonction === 'badge_livreur'
-  ) && (
-    <Crown size={15} className="shrink-0 text-amber-400" />
-  )}
-</div>
+                  <h1 className="truncate text-base font-extrabold leading-tight text-white">
+                    {utilisateur?.prenom} {utilisateur?.nom}
+                  </h1>
+                  {utilisateur?.status_premium?.some(
+                    (p) => p.statut === 'actif' && p.fonction === 'badge_livreur'
+                  ) && (
+                    <Crown size={15} className="shrink-0 text-amber-400" />
+                  )}
+                </div>
                 <p className="flex items-center gap-1 text-[11px] text-white/60">
                   <Bike size={10} />
                   {utilisateur?.profil_livreur?.vehicule?.immatriculation || 'N/A'}
@@ -251,7 +273,6 @@ export default function LivreurDashboard() {
               </div>
             </div>
 
-            {/* Toggle : plus visible, texte explicatif */}
             <button
               onClick={toggleDisponible}
               className="flex shrink-0 items-center gap-2 rounded-full bg-white/10 px-3 py-2 transition hover:bg-white/20"
@@ -345,7 +366,6 @@ export default function LivreurDashboard() {
           ) : (
             <div className="space-y-3">
 
-              {/* En-tête avec zone sélectionnée */}
               {zoneSelectionnee && (
                 <div className="flex items-center justify-between rounded-2xl bg-blue-50 px-3 py-2">
                   <span className="flex items-center gap-1.5 text-[11px] font-bold text-blue-700">
@@ -366,6 +386,8 @@ export default function LivreurDashboard() {
               {courses.map((cmd) => {
                 const prod = cmd.lignes?.[0]?.produit_detail || {};
                 const selected = selection.some((c) => c.id === cmd.id);
+                const gain = Number(cmd.frais_livraison_estime || 500);
+
                 return (
                   <div
                     key={cmd.id}
@@ -419,7 +441,7 @@ export default function LivreurDashboard() {
                       <div className="text-right">
                         <p className="text-[10px] text-stone-400">Gain estimé</p>
                         <p className="text-sm font-black text-[#FF6B4A]">
-                          {formatPrice(500)}
+                          {formatPrice(gain)}
                         </p>
                       </div>
                     </div>
@@ -430,7 +452,7 @@ export default function LivreurDashboard() {
           )}
         </main>
 
-        {/* ═══════════════ BOUTON ACCEPTER (fixe en bas) ═══════════════ */}
+        {/* ═══════════════ BOUTON ACCEPTER ═══════════════ */}
         {selection.length > 0 && (
           <div className="absolute bottom-20 left-4 right-4 z-20">
             <button

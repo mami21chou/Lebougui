@@ -119,7 +119,7 @@ export const CommandeService = {
     return response.data;
   },
 
-   // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
   // NOTES
   // ═══════════════════════════════════════════════════════════
 
@@ -138,8 +138,7 @@ export const CommandeService = {
     return res.data;
   },
 
-
-    // ============================================
+  // ============================================
   // LIVREUR
   // ============================================
   async toggleDisponible(disponible) {
@@ -179,5 +178,11 @@ export const CommandeService = {
     return response.data;
   },
 
-
+  // ═══ AJOUT : mise à jour de la position du livreur (hors livraison) ═══
+  async mettreAJourPosition(latitude, longitude) {
+    const response = await API.patch('/livreur/position/', {
+      latitude, longitude,
+    });
+    return response.data;
+  },
 };

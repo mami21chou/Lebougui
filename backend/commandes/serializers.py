@@ -193,6 +193,9 @@ class CommandeSerializer(serializers.ModelSerializer):
     nom_pecheur = serializers.CharField(source="pecheur.nom", read_only=True)
     telephone_pecheur = serializers.CharField(source="pecheur.telephone", read_only=True)
 
+    # ═══ AJOUT : gain estimé pour le livreur ═══
+    frais_livraison_estime = serializers.SerializerMethodField()
+
     class Meta:
         model = Commande
         fields = [
@@ -201,10 +204,30 @@ class CommandeSerializer(serializers.ModelSerializer):
             "pecheur", "nom_pecheur", "telephone_pecheur",
             "statut", "adresse_livraison", "latitude_livraison", "longitude_livraison",
             "distance_km", "frais_livraison",
+            "frais_livraison_estime",  # ← AJOUT
             "date_commande", "date_limite_confirmation",
             "lignes",
         ]
         read_only_fields = fields
+
+    def get_frais_livraison_estime(self, obj):
+        """Calcule le gain livreur en fonction de la distance."""
+        from .services import calculer_frais_livraison, calculer_distance_km
+
+        ligne = obj.lignes.first()
+        if not ligne or not ligne.produit:
+            return 500.0
+
+        prod = ligne.produit
+        if not (prod.latitude and prod.longitude
+                and obj.latitude_livraison and obj.longitude_livraison):
+            return 500.0  # tarif de base si coordonnées manquantes
+
+        dist = calculer_distance_km(
+            float(prod.latitude), float(prod.longitude),
+            float(obj.latitude_livraison), float(obj.longitude_livraison),
+        )
+        return float(calculer_frais_livraison(dist, nb_commandes=1))
 
 
 class LivraisonSerializer(serializers.ModelSerializer):

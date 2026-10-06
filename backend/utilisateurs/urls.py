@@ -2,7 +2,7 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     ConnexionView, InscriptionView, ProfilMeView,
-    SouscrirePremiumView, ToggleDisponibleView,
+    SouscrirePremiumView, ToggleDisponibleView,MettreAJourPositionLivreurView
 )
 
 urlpatterns = [
@@ -12,4 +12,5 @@ urlpatterns = [
     path("auth/token/refresh/", TokenRefreshView.as_view(), name="token"),
     path("premium/souscrire/", SouscrirePremiumView.as_view(), name="souscrire-premium"),
     path("livreur/disponible/", ToggleDisponibleView.as_view(), name="toggle-disponible"),
+    path("livreur/position/", MettreAJourPositionLivreurView.as_view(), name="livreur-position"),
 ]

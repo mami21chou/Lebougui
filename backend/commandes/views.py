@@ -233,6 +233,7 @@ class LivraisonViewSet(viewsets.ModelViewSet):
         ).exists()
 
     # --- Courses disponibles ---
+    
     @action(detail=False, methods=["get"], permission_classes=[EstLivreur], url_path="disponibles")
     def disponibles(self, request):
         profil = request.user.profil_livreur
@@ -240,15 +241,44 @@ class LivraisonViewSet(viewsets.ModelViewSet):
         if not profil.disponible:
             return Response({"resultats": [], "raison": "hors_ligne"})
 
-        commandes_payees = Commande.objects.filter(
-            statut=Commande.Statut.PAYEE,
-            livraisons__isnull=True,
-        ).select_related("pecheur", "acheteur").prefetch_related("lignes__produit").distinct()
+        # ═══ Commandes payées sans livraison ═══
+        commandes_payees = list(
+            Commande.objects.filter(
+                statut=Commande.Statut.PAYEE,
+                livraisons__isnull=True,
+            )
+            .select_related("pecheur", "acheteur")
+            .prefetch_related("lignes__produit")
+            .distinct()
+        )
 
+        # ═══ Filtre : POINT DE RÉCUPÉRATION proche du livreur ═══
+        RAYON_KM = 15
+        if profil.derniere_latitude and profil.derniere_longitude:
+            commandes_proches = []
+            for c in commandes_payees:
+                ligne = c.lignes.first()
+                prod = ligne.produit if ligne else None
+
+                # Pas de GPS produit → on garde quand même (fallback)
+                if not prod or not prod.latitude or not prod.longitude:
+                    commandes_proches.append(c)
+                    continue
+
+                # Distance livreur ↔ PÊCHEUR (point de récupération)
+                dist = calculer_distance_km(
+                    profil.derniere_latitude, profil.derniere_longitude,
+                    prod.latitude, prod.longitude,
+                )
+                if dist <= RAYON_KM:
+                    commandes_proches.append(c)
+
+            commandes_payees = commandes_proches
+
+        # ═══ Priorité Premium (inchangé) ═══
         est_premium = self._est_livreur_premium(profil)
 
         if not est_premium:
-            # Vérifier s'il existe un livreur Premium DISPONIBLE et LIBRE
             premium_libre = False
             for p in ProfilLivreur.objects.filter(disponible=True):
                 if not self._est_livreur_premium(p):
@@ -268,8 +298,12 @@ class LivraisonViewSet(viewsets.ModelViewSet):
             if premium_libre:
                 return Response({"resultats": [], "raison": "premiums_disponibles"})
 
-        data = CommandeSerializer(commandes_payees, many=True, context={"request": request}).data
+        data = CommandeSerializer(
+            commandes_payees, many=True, context={"request": request}
+        ).data
         return Response({"resultats": data})
+
+
 
     # --- Accepter une ou plusieurs commandes ---
     @action(detail=False, methods=["post"], permission_classes=[EstLivreur], url_path="accepter")
@@ -328,7 +362,7 @@ class LivraisonViewSet(viewsets.ModelViewSet):
                 premiere.latitude_livraison, premiere.longitude_livraison,
             )
 
-        frais = calculer_frais_livraison(distance_km)
+        frais = calculer_frais_livraison(distance_km, nb_commandes=len(commandes))
 
         with transaction.atomic():
             livraison = Livraison.objects.create(

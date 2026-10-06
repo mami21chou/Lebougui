@@ -6,6 +6,8 @@ from rest_framework.views import APIView
 from .models import Utilisateur
 from .serializers import ConnexionSerializer, InscriptionSerializer, UtilisateurSerializer, PremiumSouscriptionSerializer, PremiumSerializer
 from rest_framework import status, permissions
+from django.utils import timezone
+
 
 class InscriptionView(APIView):
     """Endpoint pour l'inscription des Pêcheurs, Livreurs et Acheteurs."""
@@ -95,3 +97,28 @@ class ToggleDisponibleView(APIView):
         profil.save(update_fields=["disponible"])
 
         return Response({"disponible": profil.disponible}, status=status.HTTP_200_OK)    
+
+
+class MettreAJourPositionLivreurView(APIView):
+    """Permet au livreur de mettre à jour sa position GPS actuelle."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        user = request.user
+        if user.role != Utilisateur.Role.LIVREUR:
+            return Response({"erreur": "Réservé aux livreurs."}, status=403)
+
+        lat = request.data.get("latitude")
+        lng = request.data.get("longitude")
+        if lat is None or lng is None:
+            return Response({"erreur": "latitude et longitude requis."}, status=400)
+
+        profil = user.profil_livreur
+        profil.derniere_latitude    = float(lat)
+        profil.derniere_longitude   = float(lng)
+        profil.derniere_position_at = timezone.now()
+        profil.save(update_fields=[
+            "derniere_latitude", "derniere_longitude", "derniere_position_at",
+        ])
+
+        return Response({"ok": True})
