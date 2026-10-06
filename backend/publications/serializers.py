@@ -1,4 +1,6 @@
 from rest_framework import serializers
+
+from .utils import normaliser_nom_espece   
 from .models import Produit, Information
 
 
@@ -36,11 +38,19 @@ class ProduitCreateSerializer(serializers.ModelSerializer):
         # lui-même depuis l'API.
 
     def create(self, validated_data):
+        # ═══ AJOUT : normaliser le nom ═══
+        if "nom" in validated_data:
+            validated_data["nom"] = normaliser_nom_espece(validated_data["nom"])
+
         validated_data["pecheur"] = self.context["request"].user
         produit = Produit(**validated_data)
         produit.regle_moderation()
         produit.save()
         return produit
+
+
+
+
 
 
 class InformationCreateSerializer(serializers.ModelSerializer):

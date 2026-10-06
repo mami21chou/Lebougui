@@ -49,7 +49,6 @@ class ProfilMeView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)    
 
 
-
 class SouscrirePremiumView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

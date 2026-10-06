@@ -128,6 +128,9 @@ class Vehicule(models.Model):
 # PROFIL LIVREUR
 # =========================================================
 
+
+
+
 class ProfilLivreur(models.Model):
     """Profil complémentaire pour les utilisateurs de rôle LIVREUR."""
 
@@ -139,13 +142,18 @@ class ProfilLivreur(models.Model):
     document_verification = models.FileField(
         upload_to="documents_livreurs/", null=True, blank=True
     )
-    # PROTECT : empêche la suppression d'un véhicule encore utilisé
     vehicule = models.OneToOneField(
         Vehicule, on_delete=models.PROTECT, related_name="livreur"
     )
 
+    # ═══ Position temps réel du livreur (hors livraison) ═══
+    derniere_latitude    = models.FloatField(null=True, blank=True)
+    derniere_longitude   = models.FloatField(null=True, blank=True)
+    derniere_position_at = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return f"Profil livreur - {self.utilisateur}"
+
 
 
 # =========================================================

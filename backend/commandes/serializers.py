@@ -3,7 +3,9 @@ App : commandes
 Fichier : serializers.py
 """
 
+from datetime import timedelta
 import uuid
+from django.utils import timezone
 from rest_framework import serializers
 from utilisateurs.models import Premium, ProfilPecheur, ProfilLivreur, Vehicule
 from publications.models import Produit
@@ -272,6 +274,20 @@ class NoteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"commande": "Vous ne pouvez noter que vos propres commandes."}
             )
+
+
+
+        # ═══ AJOUT : fenêtre de 24h ═══
+        livraison = commande.livraisons.first()
+        date_livraison = (
+            livraison.date_livraison if livraison and livraison.date_livraison
+            else commande.date_commande
+        )
+        if timezone.now() - date_livraison > timedelta(hours=24):
+            raise serializers.ValidationError(
+                {"commande": "Vous ne pouvez plus noter cette commande (délai de 24h dépassé)."}
+            )
+        # ═══════════════════════════
 
         # La cible doit être le pêcheur OU le livreur
         pecheur_id = commande.pecheur_id

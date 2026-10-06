@@ -34,6 +34,15 @@ const formatDate = (dateStr) => {
   });
 };
 
+// ═══ 24H — peut-on encore noter ? ═══
+const peutNoter = (cmd) => {
+  const livraison = cmd.livraisons?.[0];
+  const dateLiv = livraison?.date_livraison || cmd.date_livraison || cmd.date_commande;
+  if (!dateLiv) return false;
+  const ecart = Date.now() - new Date(dateLiv).getTime();
+  return ecart < 24 * 60 * 60 * 1000; // < 24h
+};
+
 const EN_COURS_STATUTS = [
   'en_attente_pecheur',
   'en_attente_paiement',
@@ -241,8 +250,10 @@ export default function MesCommandes() {
               const livreurNom = cmd.livreur_nom || null;
               const telephoneLivreur = cmd.telephone_livreur || null;
 
-              // ⚡ L'itinéraire est cliquable SEULEMENT si en_livraison
               const itineraireActif = cmd.statut === 'en_livraison';
+
+              // ═══ 24H ═══
+              const notable = peutNoter(cmd);
 
               return (
                 <article
@@ -409,7 +420,6 @@ export default function MesCommandes() {
                   {/* ACTIONS */}
                   {filtreStatut === 'en_cours' && (
                     <div className="flex gap-2 px-4 pb-4 pt-2">
-                      {/* Bouton ITINÉRAIRE — toujours visible, cliquable SEULEMENT si en_livraison */}
                       <button
                         onClick={() => {
                           if (itineraireActif) {
@@ -422,17 +432,11 @@ export default function MesCommandes() {
                             ? 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98]'
                             : 'cursor-not-allowed bg-stone-100 text-stone-400'
                         }`}
-                        title={
-                          itineraireActif
-                            ? 'Voir la position du livreur en direct'
-                            : 'Disponible dès que le livreur aura accepté'
-                        }
                       >
                         <MapPin size={13} />
                         Itinéraire
                       </button>
 
-                      {/* Bouton secondaire intelligent */}
                       {cmd.statut === 'en_livraison' ? (
                         <button
                           onClick={() => handleAppeler(telephoneLivreur)}
@@ -462,6 +466,7 @@ export default function MesCommandes() {
                     </div>
                   )}
 
+                  {/* ═══ LIVRÉES : bouton Noter conditionnel 24h ═══ */}
                   {filtreStatut === 'livrees' && (
                     <div className="flex gap-2 px-4 pb-4 pt-2">
                       <button
@@ -470,12 +475,20 @@ export default function MesCommandes() {
                       >
                         Voir le détail
                       </button>
-                      <button
-                        onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
-                        className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white transition hover:bg-emerald-700"
-                      >
-                        Noter
-                      </button>
+
+                      {/* ⚡ Noter : visible UNIQUEMENT dans les 24h */}
+                      {notable ? (
+                        <button
+                          onClick={() => navigate(`/acheteur/commande/${cmd.id}`)}
+                          className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white transition hover:bg-emerald-700"
+                        >
+                          Noter
+                        </button>
+                      ) : (
+                        <div className="flex flex-1 items-center justify-center rounded-2xl bg-stone-100 px-4 py-3 text-[10px] font-bold text-stone-400">
+                          Délai de notation dépassé
+                        </div>
+                      )}
                     </div>
                   )}
 

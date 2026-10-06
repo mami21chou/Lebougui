@@ -127,7 +127,7 @@ const InfoCard = ({ info, isMine, showActions, onEdit, onDelete }) => {
   return (
     <article className="overflow-hidden rounded-3xl bg-white shadow-sm">
       <div className="flex">
-        <div className="w-1 shrink-0 bg-gradient-to-b from-[#0C3B4A] to-teal-500" />
+        <div className="" />
 
         <div className="flex-1 space-y-3 p-4">
           <header className="flex items-center gap-3">

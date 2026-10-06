@@ -22,6 +22,15 @@ const ligneSousTotal = (ligne) => {
   return prix * qte;
 };
 
+
+const peutNoter = (cmd) => {
+  const livraison = cmd.livraisons?.[0];
+  const dateLiv = livraison?.date_livraison || cmd.date_livraison || cmd.date_commande;
+  if (!dateLiv) return false;
+  const ecart = Date.now() - new Date(dateLiv).getTime();
+  return ecart < 24 * 60 * 60 * 1000; // < 24h
+};
+
 export default function CommandeDetails() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -568,13 +577,20 @@ export default function CommandeDetails() {
                   Votre avis compte
                 </p>
 
-                <button
-                  onClick={() => setShowNotation(true)}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FF6B4A] py-3.5 text-xs font-extrabold text-white shadow-lg shadow-orange-500/25 transition hover:bg-[#E85A39] active:scale-[0.98]"
-                >
-                  <Star size={14} fill="currentColor" />
-                  Noter le pêcheur & le livreur
-                </button>
+                {/* ⚡ Noter : visible UNIQUEMENT dans les 24h */}
+                {peutNoter(commande) ? (
+                  <button
+                    onClick={() => setShowNotation(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FF6B4A] py-3.5 text-xs font-extrabold text-white shadow-lg shadow-orange-500/25 transition hover:bg-[#E85A39] active:scale-[0.98]"
+                  >
+                    <Star size={14} fill="currentColor" />
+                    Noter le pêcheur & le livreur
+                  </button>
+                ) : (
+                  <div className="flex w-full items-center justify-center gap-2 rounded-2xl border border-stone-200 bg-stone-50 py-3.5 text-[11px] font-bold text-stone-400">
+                    Délai de notation dépassé (24h)
+                  </div>
+                )}
               </div>
             )}
 

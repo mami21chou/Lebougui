@@ -212,7 +212,7 @@ export default function LivreurDashboard() {
     }
   };
 
-  const totalGain = selection.reduce((s, c) => s + 1000, 0);
+  const totalGain = selection.reduce((s, c) => s + 500, 0);
   const nbCommandesEnCours = enCours?.commandes_detail?.length || enCours?.commandes?.length || 0;
 
   return (
@@ -419,7 +419,7 @@ export default function LivreurDashboard() {
                       <div className="text-right">
                         <p className="text-[10px] text-stone-400">Gain estimé</p>
                         <p className="text-sm font-black text-[#FF6B4A]">
-                          {formatPrice(1000)}
+                          {formatPrice(500)}
                         </p>
                       </div>
                     </div>

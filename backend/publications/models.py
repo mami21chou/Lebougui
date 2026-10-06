@@ -38,9 +38,6 @@ class Publication(models.Model):
             return f"Publication #{self.pk} - {self.pecheur}"        
 
 
-
-
-
 class Produit(Publication):
     class Categorie(models.TextChoices):
         POISSON = "poisson", "Poisson"

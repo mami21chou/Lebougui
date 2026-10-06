@@ -268,7 +268,7 @@ class LivraisonViewSet(viewsets.ModelViewSet):
             if premium_libre:
                 return Response({"resultats": [], "raison": "premiums_disponibles"})
 
-        data = CommandeSerializer(commandes_payees, many=True).data
+        data = CommandeSerializer(commandes_payees, many=True, context={"request": request}).data
         return Response({"resultats": data})
 
     # --- Accepter une ou plusieurs commandes ---

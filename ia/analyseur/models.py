@@ -24,9 +24,7 @@ transcripteur = pipeline(
 # ============================================================
 # 2. TRADUCTION — Google Translate (détection auto de la langue)
 # ============================================================
-# Note : Google Translate ne supporte pas "wo" comme source explicite
-# via deep-translator, mais la détection auto reconnaît bien le wolof.
-# On instancie donc le traducteur à chaque appel (voir traduire_texte).
+
 
 # ============================================================
 # 3. CLASSIFICATION D'IMAGE — CLIP

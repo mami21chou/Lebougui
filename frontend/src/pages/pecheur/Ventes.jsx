@@ -10,9 +10,12 @@ import PecheurBottomNav from '../../components/PecheurBottomNav';
 const formatPrice = (p) =>
   `${new Intl.NumberFormat('fr-FR').format(Number(p) || 0)} FCFA`;
 
+// Statuts qui comptent comme "vente" (paiement + livraison effectués)
+const STATUTS_VENTE = ['payee', 'en_recherche_livreur', 'en_livraison', 'livree'];
+
 const Ventes = () => {
   const { estPecheur } = useAuth();
-  const { mesCommandes, chargerMesCommandes, getStatistiquesPêcheur } = useCommandes();
+  const { mesCommandes, chargerMesCommandes } = useCommandes();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -37,59 +40,101 @@ const Ventes = () => {
     loadData();
   }, [estPecheur, chargerMesCommandes, navigate]);
 
-  const statistiques = getStatistiquesPêcheur();
+  // ═══════════════════════════════════════════════════════════
+  // BASE UNIQUE : commandes PAYÉES (au sens large)
+  // ═══════════════════════════════════════════════════════════
+  const toutesCommandes = mesCommandes.liste || [];
 
-  // Commandes livrées uniquement (= ventes réelles)
-  const commandesTerminees = (mesCommandes.liste || [])
-    .filter((cmd) => cmd.statut === 'livree')
-    .sort(
-      (a, b) =>
-        new Date(b.date_commande || b.date || b.created_at) -
-        new Date(a.date_commande || a.date || a.created_at)
-    );
-
-  // Total d'une commande (multi-lignes)
   const getMontantTotal = (commande) =>
     (commande.lignes || []).reduce(
       (sum, l) => sum + Number(l.prix_unitaire || 0) * Number(l.quantite || 0),
       0
     );
 
-  // Ventes par période
-  const getVentesParPeriode = () => {
-    const aujourdHui = new Date();
-    const result = { jour: 0, semaine: 0, mois: 0, annee: 0 };
+  const commandesPayees = toutesCommandes
+    .filter((cmd) => STATUTS_VENTE.includes(cmd.statut))
+    .filter((cmd) => {
+      const d = cmd.date_commande || cmd.date || cmd.created_at;
+      return d && !isNaN(new Date(d).getTime());
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.date_commande || b.date || b.created_at) -
+        new Date(a.date_commande || a.date || a.created_at)
+    );
 
-    commandesTerminees.forEach((cmd) => {
+  // Chiffre d'affaires total
+  const chiffreAffairesTotal = commandesPayees.reduce(
+    (sum, c) => sum + getMontantTotal(c),
+    0
+  );
+
+  // Kg vendus
+  const totalKgVendus = commandesPayees.reduce(
+    (sum, c) =>
+      sum + (c.lignes || []).reduce((s, l) => s + Number(l.quantite || 0), 0),
+    0
+  );
+
+  // ═══ Stats globales ═══
+  const statistiques = {
+    ventesTotal: chiffreAffairesTotal,
+    commandesTotal: commandesPayees.length,
+    produitsVendus: totalKgVendus,
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // STATS PAR PÉRIODE
+  // ═══════════════════════════════════════════════════════════
+  const getStatsParPeriode = () => {
+    const aujourdHui = new Date();
+    const result = {
+      jour:    { montant: 0, count: 0 },
+      semaine: { montant: 0, count: 0 },
+      mois:    { montant: 0, count: 0 },
+      annee:   { montant: 0, count: 0 },
+    };
+
+    commandesPayees.forEach((cmd) => {
       const dateCmd = new Date(cmd.date_commande || cmd.date || cmd.created_at);
       const montant = getMontantTotal(cmd);
 
       if (dateCmd.toDateString() === aujourdHui.toDateString()) {
-        result.jour += montant;
+        result.jour.montant += montant;
+        result.jour.count += 1;
       }
+
       const diffJours = (aujourdHui - dateCmd) / (1000 * 60 * 60 * 24);
-      if (diffJours <= 7) result.semaine += montant;
+      if (diffJours <= 7) {
+        result.semaine.montant += montant;
+        result.semaine.count += 1;
+      }
 
       if (
         dateCmd.getMonth() === aujourdHui.getMonth() &&
         dateCmd.getFullYear() === aujourdHui.getFullYear()
       ) {
-        result.mois += montant;
+        result.mois.montant += montant;
+        result.mois.count += 1;
       }
+
       if (dateCmd.getFullYear() === aujourdHui.getFullYear()) {
-        result.annee += montant;
+        result.annee.montant += montant;
+        result.annee.count += 1;
       }
     });
 
     return result;
   };
 
-  const ventesParPeriode = getVentesParPeriode();
+  const statsParPeriode = getStatsParPeriode();
 
+  // ═══════════════════════════════════════════════════════════
   // Top produits
+  // ═══════════════════════════════════════════════════════════
   const getProduitsPlusVendus = () => {
     const map = new Map();
-    commandesTerminees.forEach((cmd) => {
+    commandesPayees.forEach((cmd) => {
       (cmd.lignes || []).forEach((ligne) => {
         const prod = ligne.produit_detail || {};
         const key = prod.id || prod.nom || 'inconnu';
@@ -112,10 +157,12 @@ const Ventes = () => {
 
   const produitsPlusVendus = getProduitsPlusVendus();
 
+  // ═══════════════════════════════════════════════════════════
   // Clients fidèles
+  // ═══════════════════════════════════════════════════════════
   const getClientsFideles = () => {
     const map = new Map();
-    commandesTerminees.forEach((cmd) => {
+    commandesPayees.forEach((cmd) => {
       const acheteur = cmd.acheteur_detail || {};
       const id = acheteur.id || cmd.acheteur;
       if (!id) return;
@@ -158,7 +205,7 @@ const Ventes = () => {
         {/* MAIN scrollable */}
         <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-28 pt-2 space-y-4">
 
-          {/* Chiffre d'affaires */}
+          {/* ═══ Chiffre d'affaires ═══ */}
           <div className="rounded-3xl bg-[#0C3B4A] p-5 text-white shadow-lg">
             <div className="flex items-start justify-between mb-3">
               <div>
@@ -175,8 +222,10 @@ const Ventes = () => {
             </div>
             <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/10">
               <div className="text-center">
-                <p className="text-lg font-black">{statistiques.commandesTerminees}</p>
-                <p className="text-[10px] text-cyan-200">Commandes livrées</p>
+                <p className="text-lg font-black">
+                  {statistiques.commandesTotal}
+                </p>
+                <p className="text-[10px] text-cyan-200">Commandes payées</p>
               </div>
               <div className="text-center">
                 <p className="text-lg font-black">
@@ -187,7 +236,7 @@ const Ventes = () => {
             </div>
           </div>
 
-          {/* Filtres période */}
+          {/* ═══ Filtres période ═══ */}
           <div className="rounded-2xl bg-white p-2 shadow-sm border border-stone-100 flex gap-1">
             {[
               { id: 'jour', label: "Aujourd'hui" },
@@ -212,14 +261,14 @@ const Ventes = () => {
             })}
           </div>
 
-          {/* Résumé période */}
+          {/* ═══ Résumé période ═══ */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-white p-3 shadow-sm border border-stone-100">
               <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50">
                 <TrendingUp size={14} className="text-emerald-600" />
               </div>
               <p className="text-xl font-black text-[#0F2A4A]">
-                {formatPrice(ventesParPeriode[periode])}
+                {formatPrice(statsParPeriode[periode].montant)}
               </p>
               <p className="text-[10px] text-stone-500 capitalize">
                 Ventes {periode}
@@ -230,7 +279,7 @@ const Ventes = () => {
                 <BarChart3 size={14} className="text-blue-600" />
               </div>
               <p className="text-xl font-black text-[#0F2A4A]">
-                {commandesTerminees.length}
+                {statsParPeriode[periode].count}
               </p>
               <p className="text-[10px] text-stone-500 capitalize">
                 Commandes {periode}
@@ -238,7 +287,7 @@ const Ventes = () => {
             </div>
           </div>
 
-          {/* Top produits */}
+          {/* ═══ Top produits ═══ */}
           <div className="space-y-2">
             <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
               Produits les plus vendus
@@ -277,7 +326,7 @@ const Ventes = () => {
             )}
           </div>
 
-          {/* Top clients */}
+          {/* ═══ Top clients ═══ */}
           <div className="space-y-2">
             <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
               Clients les plus fidèles
@@ -316,7 +365,7 @@ const Ventes = () => {
             )}
           </div>
 
-          {/* Historique */}
+          {/* ═══ Historique ═══ */}
           <div className="space-y-2">
             <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">
               Historique des ventes
@@ -330,7 +379,7 @@ const Ventes = () => {
               <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-700">
                 {error}
               </div>
-            ) : commandesTerminees.length === 0 ? (
+            ) : commandesPayees.length === 0 ? (
               <div className="rounded-3xl border border-stone-100 bg-white p-8 text-center shadow-sm">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-stone-100">
                   <BarChart3 size={28} className="text-stone-400" />
@@ -339,7 +388,7 @@ const Ventes = () => {
                   Aucune vente enregistrée
                 </h3>
                 <p className="mb-4 text-xs text-stone-500">
-                  Vos ventes apparaîtront ici après livraison.
+                  Vos ventes apparaîtront ici après paiement.
                 </p>
                 <button
                   onClick={() => navigate('/pecheur/publication/nouvelle')}
@@ -349,7 +398,7 @@ const Ventes = () => {
                 </button>
               </div>
             ) : (
-              commandesTerminees.slice(0, 10).map((cmd) => {
+              commandesPayees.slice(0, 10).map((cmd) => {
                 const montant = getMontantTotal(cmd);
                 const premier = cmd.lignes?.[0]?.produit_detail || {};
 
@@ -362,7 +411,7 @@ const Ventes = () => {
                       <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-stone-100">
                         {premier.media ? (
                           <img
-                            src={premier.media} 
+                            src={premier.media}
                             alt={premier.nom}
                             className="h-full w-full object-cover"
                           />
