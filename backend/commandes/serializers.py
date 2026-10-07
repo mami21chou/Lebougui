@@ -74,9 +74,7 @@ class CommandeCreateSerializer(serializers.Serializer):
                 "Séparez votre panier par pêcheur avant de commander."
             )
 
-        # Disponibilité : un produit désactivé par le pêcheur (statut = rupture)
-        # ne peut plus être commandé. On les liste TOUS d'un coup et on renvoie
-        # leurs ids pour que le panier puisse les signaler à l'acheteur.
+        # ═══ Disponibilité : produit en rupture de stock ═══
         indisponibles = [p for p in produits if p.statut != Produit.Statut.DISPONIBLE]
         if indisponibles:
             noms = ", ".join(f"« {p.nom} »" for p in indisponibles)
@@ -87,11 +85,36 @@ class CommandeCreateSerializer(serializers.Serializer):
                 "produits_indisponibles": [p.id for p in indisponibles],
             })
 
-        attrs["_produits"] = {p.id: p for p in produits}
+        # ═══ Vérification du STOCK disponible ═══
+        map_produits = {p.id: p for p in produits}
+        stocks_insuffisants = []
+
+        for ligne in attrs["lignes"]:
+            produit = map_produits[ligne["produit_id"]]
+            if produit.quantite < ligne["quantite"]:
+                stocks_insuffisants.append({
+                    "id": produit.id,
+                    "nom": produit.nom,
+                    "disponible": float(produit.quantite),
+                    "demande": float(ligne["quantite"]),
+                })
+
+        if stocks_insuffisants:
+            details = ", ".join(
+                f"« {s['nom']} » (demandé {s['demande']} kg, dispo {s['disponible']} kg)"
+                for s in stocks_insuffisants
+            )
+            raise serializers.ValidationError({
+                "non_field_errors": [
+                    f"Stock insuffisant pour : {details}."
+                ],
+                "produits_indisponibles": [s["id"] for s in stocks_insuffisants],
+            })
+
+        attrs["_produits"] = map_produits
         return attrs
 
     def create(self, validated_data):
-
         lignes = validated_data.pop("lignes")
         produits = validated_data.pop("_produits")
         premier_produit = next(iter(produits.values()))
@@ -117,12 +140,13 @@ class CommandeCreateSerializer(serializers.Serializer):
         for ligne in lignes:
             produit = produits[ligne["produit_id"]]
             ProduitCommande.objects.create(
-                commande=commande, produit=produit,
-                quantite=ligne["quantite"], prix_unitaire=produit.prix,
+                commande=commande,
+                produit=produit,
+                quantite=ligne["quantite"],
+                prix_unitaire=produit.prix,
             )
 
         return commande
-
 
 # =========================================================
 # LIVRAISON

@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 
 from django.conf import settings
+from publications.models import Produit
 from utilisateurs.models import Premium, ProfilLivreur, Utilisateur
 from .models import Commande, Livraison, Note, Alerte
 from .serializers import (
@@ -175,7 +176,7 @@ class CommandeViewSet(viewsets.ModelViewSet):
     def payer_simule(self, request, pk=None):
         """
         Simulation de paiement (remplace PayDunya pour la soutenance).
-        Passe la commande en 'payee' si elle est en attente de paiement.
+        Passe la commande en 'payee' et DÉCRÉMENTE le stock des produits.
         """
         commande = self.get_object()
 
@@ -195,18 +196,42 @@ class CommandeViewSet(viewsets.ModelViewSet):
         moyen = request.data.get("moyen_paiement", "wave")
         telephone = request.data.get("telephone", "")
 
-        commande.statut = Commande.Statut.PAYEE
-        commande.save(update_fields=["statut"])
+        # ═══ VÉRIFICATION DU STOCK AVANT PAIEMENT ═══
+        for ligne in commande.lignes.all():
+            produit = ligne.produit
+            if produit.quantite < ligne.quantite:
+                return Response(
+                    {
+                        "erreur": f"Stock insuffisant pour « {produit.nom} ». "
+                                f"Disponible : {produit.quantite} kg, demandé : {ligne.quantite} kg."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # ═══ DÉCRÉMENTER LE STOCK + PASSER EN PAYÉE ═══
+        with transaction.atomic():
+            for ligne in commande.lignes.all():
+                produit = ligne.produit
+                produit.quantite -= ligne.quantite
+
+                # Si le stock tombe à 0 → rupture automatique
+                if produit.quantite <= 0:
+                    produit.quantite = 0
+                    produit.statut = Produit.Statut.RUPTURE
+
+                produit.save(update_fields=["quantite", "statut"])
+
+            commande.statut = Commande.Statut.PAYEE
+            commande.save(update_fields=["statut"])
 
         data = CommandeSerializer(commande).data
         data["moyen_paiement"] = moyen
         data["telephone"] = telephone
 
         print(f">>> [SIMULATION] Commande {commande.numero} → PAYEE via {moyen} ({telephone})")
+        print(f">>> [STOCK] Décrémenté pour {commande.lignes.count()} produit(s)")
 
         return Response(data, status=status.HTTP_200_OK)
-    # commandes/views.py — APIView publique
-
 
 # =========================================================
 # 2. VIEWSET LIVRAISON
