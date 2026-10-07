@@ -21,6 +21,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { usePublications } from '../../context/PublicationContext';
 import { useAudio } from '../../context/AudioContext';
+import { useFCM } from '../../hooks/useFCM';
 import AcheteurHeader from '../../components/AcheteurHeader';
 import AcheteurBottomNav from '../../components/AcheteurBottomNav';
 
@@ -48,11 +49,9 @@ const formatPrice = (price) =>
 const estDisponible = (product) =>
   (product.statut ?? 'disponible') === 'disponible';
 
-// Le stock est-il épuisé ?
 const estEpuise = (product) =>
   Number(product.quantite || 0) <= 0;
 
-// Le produit est-il commandable ? (dispo + stock > 0)
 const estCommandable = (product) =>
   estDisponible(product) && !estEpuise(product);
 
@@ -67,8 +66,7 @@ const getSellerName = (product) => {
   );
 };
 
-const getSellerInitial = (name) =>
-  name.charAt(0).toUpperCase();
+const getSellerInitial = (name) => name.charAt(0).toUpperCase();
 
 const capitalize = (str) =>
   str
@@ -85,6 +83,9 @@ const capitalize = (str) =>
 export default function AcheteurDashboard() {
   const navigate = useNavigate();
   const { utilisateur } = useAuth();
+
+  // ═══ Notifications FCM ═══
+  useFCM();
 
   const { publications, chargerPublications } = usePublications();
 
@@ -195,7 +196,6 @@ export default function AcheteurDashboard() {
   const cartCount = panier.reduce((t, i) => t + Number(i.quantite || 0), 0);
 
   const handlePlusClick = (product) => {
-    // ═══ Stock épuisé ou rupture → refus ═══
     if (!estCommandable(product)) {
       showFeedback(`${product.nom} est en rupture de stock`);
       return;
@@ -224,7 +224,7 @@ export default function AcheteurDashboard() {
         nom: product.nom,
         prix: Number(product.prix) || 0,
         quantite: 1,
-        stock: Number(product.quantite) || 0,   // ⬅ AJOUT : stock disponible
+        stock: Number(product.quantite) || 0,
         image: product.media || product.image || fallbackImage,
         unite: product.unite || 'kg',
         adresse: product.adresse || 'Dakar',
@@ -260,7 +260,7 @@ export default function AcheteurDashboard() {
           nom: product.nom,
           prix: Number(product.prix) || 0,
           quantite: 1,
-          stock: Number(product.quantite) || 0,   // ⬅ AJOUT
+          stock: Number(product.quantite) || 0,
           image: product.media || product.image || fallbackImage,
           unite: product.unite || 'kg',
           adresse: product.adresse || 'Dakar',
@@ -424,8 +424,7 @@ export default function AcheteurDashboard() {
                   const sellerName = getSellerName(product);
                   const panierItem = panier.find((item) => String(item.id) === String(product.id));
                   const isInCart = !!panierItem;
-                  const disponible = estDisponible(product);
-                  const commandable = estCommandable(product);   // ⬅ AJOUT
+                  const commandable = estCommandable(product);
                   const audioId = `prod-${product.id}`;
                   const isPlaying = audioEnCours === audioId;
                   const stock = Number(product.quantite || 0);
@@ -486,13 +485,12 @@ export default function AcheteurDashboard() {
 
                         <div className="mt-2 flex items-end justify-between gap-1">
                           <div className="min-w-0">
-                            <p className={`font-display truncate text-sm font-bold leading-none ${commandable ? 'text-stone-900' : 'text-stone-400'}`}>
-                              {formatPrice(product.prix)}
+                            <p className={`font-display flex items-baseline gap-1 text-sm font-bold leading-none ${commandable ? 'text-stone-900' : 'text-stone-400'}`}>
+                              <span className="truncate">{formatPrice(product.prix)}</span>
+                              <span className="text-[9px] font-medium text-stone-400">
+                                / {product.unite || 'kg'}
+                              </span>
                             </p>
-                            <p className="mt-0.5 text-[9px] font-medium text-stone-400">
-                              / {product.unite || 'kg'}
-                            </p>
-                            {/* ═══ Stock restant ═══ */}
                             <p className={`mt-0.5 text-[9px] font-bold ${commandable ? 'text-emerald-600' : 'text-rose-500'}`}>
                               {commandable ? `${stock} kg dispo` : 'Stock épuisé'}
                             </p>
