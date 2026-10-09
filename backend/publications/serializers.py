@@ -49,10 +49,6 @@ class ProduitCreateSerializer(serializers.ModelSerializer):
         return produit
 
 
-
-
-
-
 class InformationCreateSerializer(serializers.ModelSerializer):
     """
     Équivalent de ProduitCreateSerializer, pour une Information.

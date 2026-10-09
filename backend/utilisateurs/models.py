@@ -233,3 +233,21 @@ class Premium(models.Model):
 
     def __str__(self):
         return f"{self.fonction} - {self.utilisateur} ({self.statut})"
+
+
+
+
+# =========================================================
+# FCM TOKEN (notifications push Firebase)
+# =========================================================
+
+class FCMToken(models.Model):
+    """Token d'un appareil pour recevoir les notifications push."""
+    utilisateur = models.ForeignKey(
+        Utilisateur, on_delete=models.CASCADE, related_name="fcm_tokens"
+    )
+    token = models.CharField(max_length=255, unique=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Token {self.utilisateur.prenom} - {self.token[:20]}..."    

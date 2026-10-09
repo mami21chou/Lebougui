@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import Utilisateur
+from .models import FCMToken, Utilisateur
 from .serializers import ConnexionSerializer, InscriptionSerializer, UtilisateurSerializer, PremiumSouscriptionSerializer, PremiumSerializer
 from rest_framework import status, permissions
 from django.utils import timezone
@@ -122,3 +122,21 @@ class MettreAJourPositionLivreurView(APIView):
         ])
 
         return Response({"ok": True})
+
+
+class EnregistrerFCMTokenView(APIView):
+    """Enregistre le token FCM de l'appareil de l'utilisateur connecté."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token = request.data.get("token", "").strip()
+        if not token:
+            return Response({"erreur": "Token manquant."}, status=400)
+
+        #  update_or_create : gère les doublons ET le changement d'utilisateur
+        FCMToken.objects.update_or_create(
+            token=token,
+            defaults={"utilisateur": request.user},
+        )
+
+        return Response({"success": True, "message": "Token enregistré."})

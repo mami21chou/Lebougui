@@ -12,7 +12,7 @@ from publications.models import Produit
 from publications.serializers import ProduitSerializer
 from .models import Commande, ProduitCommande, Note, Alerte, Livraison
 from utilisateurs.models import Utilisateur  
-from publications.services import geocoder_adresse 
+from publications.services.services import geocoder_adresse 
 # =========================================================
 # COMMANDE — LECTURE
 # =========================================================
@@ -389,7 +389,7 @@ class AlerteSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get("request")
         if request and request.user:
-            est_premium_actif = request.user.statuts_premium.filter(
+            est_premium_actif = request.user.status_premium.filter(
                 fonction=Premium.Fonction.ABONNEMENT_ACHETEUR,
                 statut=Premium.Statut.ACTIF,
             ).exists()
