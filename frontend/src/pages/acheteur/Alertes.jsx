@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bell, Plus, Trash2, CheckCircle, XCircle,
-  Fish, Star, MapPin, Power, X,
+  Fish, Star, MapPin, Power, X, Search,
 } from 'lucide-react';
 import { useCommandes } from '../../context/CommandeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -36,8 +36,13 @@ export default function Alertes() {
 
   const poissonsDisponibles = [...new Set((publications.produits || []).map((p) => p.nom))].filter(Boolean);
 
+  const zonesDisponibles = [...new Set(
+    (publications.produits || []).map((p) => (p.adresse || '').trim()).filter(Boolean)
+  )];
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (!nouvelleAlerte.nomPoisson.trim()) {
       setErreur('Veuillez indiquer un nom de poisson');
       return;
@@ -47,7 +52,11 @@ export default function Alertes() {
     setErreur(null);
 
     try {
-      const result = await creerAlerte(nouvelleAlerte.nomPoisson, null, null);
+      const result = await creerAlerte(
+        nouvelleAlerte.nomPoisson.trim(),
+        nouvelleAlerte.zone.trim() || null,
+        null
+      );
 
       if (result.success) {
         setNouvelleAlerte({ nomPoisson: '', zone: '' });
@@ -95,7 +104,7 @@ export default function Alertes() {
     <div className="min-h-screen bg-stone-300 font-sans antialiased sm:flex sm:items-center sm:justify-center sm:py-6">
       <div className="relative flex h-screen w-full max-w-md flex-col overflow-hidden bg-[#FAF6F0] sm:h-[880px] sm:max-h-[92vh] sm:rounded-[40px] sm:border-8 sm:border-stone-300 sm:shadow-2xl">
 
-        {/* HEADER HÉRITÉ */}
+        {/* HEADER */}
         <AcheteurHeader
           title="Mes Alertes"
           subtitle={estPremium() ? 'Suivi en temps réel' : 'Passez Premium pour activer'}
@@ -103,7 +112,7 @@ export default function Alertes() {
           showSearch={false}
         />
 
-        {/* BOUTON ACTION SOUS LE HEADER */}
+        {/* BOUTON ACTION */}
         <div className="flex justify-end px-5 pt-3 pb-1 shrink-0">
           {!estPremium() ? (
             <button
@@ -126,17 +135,14 @@ export default function Alertes() {
           )}
         </div>
 
-        {/* CONTENU SCROLLABLE */}
+        {/* CONTENU */}
         <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-24 pt-3">
 
-          {/* Messages d'erreur / succès */}
           {erreur && (
             <div className="mb-4 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
               <XCircle size={16} className="shrink-0 text-red-500" />
               <span className="flex-1">{erreur}</span>
-              <button onClick={() => setErreur(null)} className="font-bold underline">
-                Fermer
-              </button>
+              <button onClick={() => setErreur(null)} className="font-bold underline">Fermer</button>
             </div>
           )}
 
@@ -165,7 +171,7 @@ export default function Alertes() {
             ))}
           </div>
 
-          {/* Liste des alertes */}
+          {/* Liste */}
           <div className="space-y-2.5">
             {alertes?.chargement ? (
               <div className="py-12 text-center text-xs text-stone-400">Chargement...</div>
@@ -285,71 +291,101 @@ export default function Alertes() {
           )}
         </main>
 
-        {/* MODALE DE CRÉATION */}
+        {/* MODALE DE CRÉATION — STYLE PAGE CONNEXION */}
         {afficherModal && (
           <div className="absolute inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-4">
-            <div className="w-full max-w-sm rounded-t-[32px] sm:rounded-[32px] bg-[#FAF6F0] p-6 shadow-2xl">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-black text-stone-900">Nouvelle alerte poisson</h2>
+            <div className="w-full max-w-sm bg-slate-50/95 backdrop-blur-md rounded-t-[32px] sm:rounded-3xl p-6 shadow-2xl border border-white/30">
+
+              {/* En-tête */}
+              <div className="mb-6 flex items-start justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Nouvelle alerte</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Soyez notifié dès qu'un pêcheur publie
+                  </p>
+                </div>
                 <button
                   onClick={() => setAfficherModal(false)}
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-200/60 text-stone-600"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200/70 text-slate-600 hover:bg-slate-200"
                 >
                   <X size={16} />
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-3.5">
+              <form onSubmit={handleSubmit} className="space-y-4">
+
+                {/* Champ Poisson */}
                 <div>
-                  <label className="mb-1 block text-[11px] font-bold text-stone-700">
+                  <label className="block text-[10px] font-bold tracking-wider text-slate-700 uppercase mb-1">
                     Nom du poisson
                   </label>
-                  <input
-                    type="text"
-                    list="poissons"
-                    placeholder="Ex: Thiof, Capitaine..."
-                    value={nouvelleAlerte.nomPoisson}
-                    onChange={(e) =>
-                      setNouvelleAlerte({ ...nouvelleAlerte, nomPoisson: e.target.value })
-                    }
-                    className="w-full rounded-2xl border border-stone-200 bg-white px-3.5 py-3 text-xs text-stone-800 outline-none focus:ring-2 focus:ring-[#FF6B4A]/20"
-                    required
-                  />
-                  <datalist id="poissons">
-                    {poissonsDisponibles.map((poisson, index) => (
-                      <option key={index} value={poisson} />
-                    ))}
-                  </datalist>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <Fish size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      list="poissons"
+                      placeholder="Ex: Thiof, Capitaine..."
+                      value={nouvelleAlerte.nomPoisson}
+                      onChange={(e) =>
+                        setNouvelleAlerte({ ...nouvelleAlerte, nomPoisson: e.target.value })
+                      }
+                      className="w-full pl-9 pr-3 py-2.5 bg-slate-200/60 text-slate-900 placeholder-slate-400 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      required
+                    />
+                    <datalist id="poissons">
+                      {poissonsDisponibles.map((poisson, index) => (
+                        <option key={index} value={poisson} />
+                      ))}
+                    </datalist>
+                  </div>
                 </div>
 
+                {/* Champ Zone */}
                 <div>
-                  <label className="mb-1 block text-[11px] font-bold text-stone-700">
+                  <label className="block text-[10px] font-bold tracking-wider text-slate-700 uppercase mb-1">
                     Zone (facultatif)
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Dakar, Soumbédioune..."
-                    value={nouvelleAlerte.zone}
-                    onChange={(e) =>
-                      setNouvelleAlerte({ ...nouvelleAlerte, zone: e.target.value })
-                    }
-                    className="w-full rounded-2xl border border-stone-200 bg-white px-3.5 py-3 text-xs text-stone-800 outline-none focus:ring-2 focus:ring-[#FF6B4A]/20"
-                  />
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <MapPin size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      list="zones"
+                      placeholder="Ex: Soumbédioune, Yoff..."
+                      value={nouvelleAlerte.zone}
+                      onChange={(e) =>
+                        setNouvelleAlerte({ ...nouvelleAlerte, zone: e.target.value })
+                      }
+                      className="w-full pl-9 pr-3 py-2.5 bg-slate-200/60 text-slate-900 placeholder-slate-400 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                    <datalist id="zones">
+                      {zonesDisponibles.map((zone, index) => (
+                        <option key={index} value={zone} />
+                      ))}
+                    </datalist>
+                  </div>
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Laissez vide pour surveiller toutes les zones
+                  </p>
                 </div>
 
+                {/* Bouton */}
                 <button
                   type="submit"
                   disabled={chargement}
-                  className="w-full rounded-2xl bg-[#FF6B4A] py-3.5 text-xs font-extrabold text-white shadow-lg shadow-orange-500/20 transition hover:bg-[#E85A39]"
+                  className="w-full py-3.5 px-4 bg-gradient-to-r from-orange-500 to-orange-500 text-white font-bold rounded-2xl hover:from-orange-600 hover:to-amber-600 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 mt-2 flex items-center justify-center gap-2"
                 >
-                  {chargement ? 'Création...' : "Créer l'alerte"}
+                  <Plus size={18} />
+                  <span>{chargement ? 'Création...' : "Créer l'alerte"}</span>
                 </button>
               </form>
             </div>
           </div>
         )}
 
-        {/* BOTTOM NAV HÉRITÉ */}
         <AcheteurBottomNav />
       </div>
     </div>

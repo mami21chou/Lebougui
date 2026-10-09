@@ -17,7 +17,7 @@ export const AuthProvider = ({ children }) => {
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
 
-  //  Helper pour purger TOUT le localStorage d'auth en un seul endroit
+  // Helper pour purger TOUT le localStorage d'auth en un seul endroit
   const purgerAuthLocale = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('token');
@@ -37,7 +37,7 @@ export const AuthProvider = ({ children }) => {
         setUtilisateur(data);
       } catch (err) {
         console.error('Erreur lors de la vérification de la connexion:', err);
-        purgerAuthLocale();  //  purge complète
+        purgerAuthLocale();
         setUtilisateur(null);
       } finally {
         setChargement(false);
@@ -47,7 +47,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const deconnecter = useCallback(() => {
-    purgerAuthLocale();   // purge complète (access, token, refresh, user)
+    purgerAuthLocale();
     setUtilisateur(null);
     setErreur(null);
   }, []);
@@ -188,8 +188,12 @@ export const AuthProvider = ({ children }) => {
   const estAcheteur = useCallback(() => utilisateur?.role === 'acheteur', [utilisateur]);
   const estLivreur = useCallback(() => utilisateur?.role === 'livreur', [utilisateur]);
   const estAdmin = useCallback(() => utilisateur?.role === 'admin', [utilisateur]);
+
+  // ═══ CORRECTION : status_premium est un TABLEAU ═══
   const estPremium = useCallback(
-    () => utilisateur?.status_premium?.statut === 'actif',
+    () =>
+      Array.isArray(utilisateur?.status_premium) &&
+      utilisateur.status_premium.some((p) => p.statut === 'actif'),
     [utilisateur]
   );
 

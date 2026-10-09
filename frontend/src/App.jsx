@@ -49,9 +49,14 @@ import AdminPremium from './pages/admin/Premium';
 import AdminStatistiques from './pages/admin/Statistiques';
 import AdminPublications from './pages/admin/Publications';
 
+
+
+import NotificationToast from './components/NotificationToast'; 
+
 export default function App() {
   return (
     <Router>
+       <NotificationToast /> 
       <Routes>
         {/* <Route path="/" element={<Navigate to="/connexion" replace />} /> */}
 

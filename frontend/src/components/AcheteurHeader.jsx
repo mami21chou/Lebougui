@@ -2,33 +2,27 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  BadgeCheck, MapPin, Search, ShoppingBag, SlidersHorizontal,
+  BadgeCheck, MapPin, Search, ShoppingBag, Bell, SlidersHorizontal,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import UserMenu from './UserMenu';
 
 export default function AcheteurHeader({
-  // Titre : soit le greeting automatique, soit un titre fixe
   title = null,
   subtitle = null,
-
-  // Barre de recherche
   showSearch = true,
   searchQuery = '',
   onSearchChange = null,
   onFilterClick = null,
   showFilter = true,
-
-  // Panier
   cartCount = 0,
-
-  // Localisation
   locationLabel = 'Dakar, Plateau',
-
   className = '',
 }) {
   const navigate = useNavigate();
   const { utilisateur } = useAuth();
+  const { nonLues } = useNotifications();
   const [localQuery, setLocalQuery] = useState('');
 
   const isControlled = typeof onSearchChange === 'function';
@@ -39,8 +33,6 @@ export default function AcheteurHeader({
     else setLocalQuery(v);
   };
 
-  // Si "title" est fourni, on l'affiche tel quel.
-  // Sinon greeting automatique.
   const titreAffiche = title
     ? title
     : utilisateur?.prenom
@@ -63,14 +55,30 @@ export default function AcheteurHeader({
                 {titreAffiche}
               </h1>
               {utilisateur?.status_premium?.some(
-                  (p) => p.statut === 'actif' && p.fonction === 'abonnement_acheteur'
-                ) && (
-                  <BadgeCheck size={17} className="shrink-0 text-amber-400" />
-                )}
+                (p) => p.statut === 'actif' && p.fonction === 'abonnement_acheteur'
+              ) && (
+                <BadgeCheck size={17} className="shrink-0 text-amber-400" />
+              )}
             </div>
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            {/* 🔔 Cloche avec badge de notifications */}
+            <button
+              type="button"
+              onClick={() => navigate('/acheteur/alertes')}
+              aria-label={`Notifications, ${nonLues} non lues`}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-[#FAF6F0] transition hover:bg-white/20"
+            >
+              <Bell size={17} />
+              {nonLues > 0 && (
+                <span className="lb-pop absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-[#0C3B4A] bg-[#FF6B4A] text-[9px] font-bold text-white">
+                  {nonLues > 9 ? '9+' : nonLues}
+                </span>
+              )}
+            </button>
+
+            {/* Panier */}
             <button
               type="button"
               onClick={() => navigate('/acheteur/panier')}
@@ -84,6 +92,7 @@ export default function AcheteurHeader({
                 </span>
               )}
             </button>
+
             <UserMenu
               photo={utilisateur?.photo}
               prenom={utilisateur?.prenom}
