@@ -175,7 +175,7 @@ class CommandeViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], permission_classes=[EstAcheteur], url_path="payer-simule")
     def payer_simule(self, request, pk=None):
         """
-        Simulation de paiement (remplace PayDunya pour la soutenance).
+        Simulation de paiement 
         Passe la commande en 'payee' et DÉCRÉMENTE le stock des produits.
         """
         commande = self.get_object()

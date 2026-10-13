@@ -198,19 +198,3 @@ CORS_ALLOWED_ORIGINS = [
 
 
 
-# ============================================================
-# PAYDUNYA
-# ============================================================
-PAYDUNYA_MODE = "test"   # "test" ou "live"
-
-PAYDUNYA_MASTER_KEY = "5bIyo8Sc-Ja1W-KeZr-INqD-BHwiwKBKM6xQ"
-PAYDUNYA_PRIVATE_KEY = "test_private_19K74GhfpF5LR1htAJhAyyWBmiD"
-PAYDUNYA_PUBLIC_KEY = "test_public_RQQMOWT5hHwKedJgRSj0l6AlHM2"
-PAYDUNYA_TOKEN = "2JWGSXxO10S9uLF9izBD"
-
-# URL publique (ngrok) pour que PayDunya puisse appeler le webhook
-PAYDUNYA_CALLBACK_URL = "https://quit-overhead-goggles.ngrok-free.dev/api/webhooks/paydunya/"
-
-# URLs de redirection après paiement
-PAYDUNYA_RETURN_URL = "http://localhost:5173/acheteur/retour-paiement"
-PAYDUNYA_CANCEL_URL = "http://localhost:5173/acheteur/panier"
