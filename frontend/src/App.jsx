@@ -25,10 +25,8 @@ import MesCommandes from './pages/acheteur/MesCommandes';
 import CommandeDetails from './pages/acheteur/CommandeDetails';
 import Alertes from './pages/acheteur/Alertes';
 import SuiviLivraison from './pages/acheteur/SuiviLivraison';
-import ItineraireLivreur from './pages/acheteur/ItineraireLivreur';
 import Premium from './pages/acheteur/Premium';
 import AttenteConfirmation from './pages/acheteur/AttenteConfirmation';
-import RetourPaiement from './pages/acheteur/RetourPaiement';
 
 // Pages livreur
 import LivreurDashboard from './pages/livreur/LivreurDashboard';
@@ -120,10 +118,7 @@ export default function App() {
           path="/acheteur/commande/:id/annuler"
           element={<ProtectedRoute roles={['acheteur']}><CommandeDetails /></ProtectedRoute>}
         />
-        <Route
-          path="/acheteur/retour-paiement"
-          element={<ProtectedRoute roles={['acheteur']}><RetourPaiement /></ProtectedRoute>}
-        />
+        
         <Route
           path="/acheteur/alertes"
           element={<ProtectedRoute roles={['acheteur']}><Alertes /></ProtectedRoute>}
@@ -131,10 +126,6 @@ export default function App() {
         <Route
           path="/acheteur/suivi-livraison/:id"
           element={<ProtectedRoute roles={['acheteur']}><SuiviLivraison /></ProtectedRoute>}
-        />
-        <Route
-          path="/acheteur/itineraire/:id"
-          element={<ProtectedRoute roles={['acheteur']}><ItineraireLivreur /></ProtectedRoute>}
         />
         <Route
           path="/acheteur/premium"
