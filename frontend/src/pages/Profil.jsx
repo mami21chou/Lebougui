@@ -72,24 +72,9 @@ export default function Profil() {
           {/* ═══════════ CARTE PROFIL ═══════════ */}
           <div className="px-5 pt-5">
             <div className="relative overflow-hidden rounded-3xl bg-white p-5 shadow-sm">
-              {/* Badge Premium en haut à droite */}
-              {estPremium && (
-                <div className="absolute right-4 top-4 flex items-center gap-1 rounded-full bg-amber-500 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white shadow-sm">
-                  <Crown size={11} />
-                  Premium
-                </div>
-              )}
-
               <div className="flex items-start gap-4">
-                <UserMenu
-                  photo={utilisateur?.photo}
-                  prenom={utilisateur?.prenom}
-                  nom={utilisateur?.nom}
-                  role={c.label}
-                  showName={false}
-                  size="large"
-                />
-                <div className="min-w-0 flex-1 pt-1">
+                {/* Bloc nom + rôle */}
+                <div className="min-w-0 flex-1">
                   <h2 className="font-display truncate text-xl font-black text-[#0F2A4A]">
                     {utilisateur?.prenom} {utilisateur?.nom}
                   </h2>
@@ -102,6 +87,27 @@ export default function Profil() {
                       Compte vérifié
                     </p>
                   )}
+                </div>
+
+                {/* Badge Premium + UserMenu sur la même ligne */}
+                <div className="flex shrink-0 items-center gap-2 pt-0.5">
+                  {estPremium && (
+                    <span
+                      title="Compte Premium"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm"
+                    >
+                      <Crown size={16} />
+                    </span>
+                  )}
+
+                  <UserMenu
+                    photo={utilisateur?.photo}
+                    prenom={utilisateur?.prenom}
+                    nom={utilisateur?.nom}
+                    role={c.label}
+                    showName={false}
+                    size="large"
+                  />
                 </div>
               </div>
 
@@ -357,7 +363,7 @@ export default function Profil() {
                 onClick={() => alert('Page d\'édition à venir')}
               />
 
-              {!estPremium  && (
+              {!estPremium && (
                 <ActionButton
                   icon={Crown}
                   label="Passer à Premium"

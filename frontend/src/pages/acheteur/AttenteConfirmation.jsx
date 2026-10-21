@@ -145,11 +145,11 @@ export default function AttenteConfirmation() {
   // PAIEMENT
   // ============================================================
   if (etape === 'paiement') {
-    const total =
-      (commande?.lignes || []).reduce(
-        (s, l) => s + Number(l.prix_unitaire) * Number(l.quantite),
-        0
-      ) + Number(commande?.frais_livraison || 0);
+    // Total = sous-total des produits UNIQUEMENT (pas de frais de livraison)
+    const total = (commande?.lignes || []).reduce(
+      (s, l) => s + Number(l.prix_unitaire) * Number(l.quantite),
+      0
+    );
 
     const moyens = [
       {
@@ -194,7 +194,7 @@ export default function AttenteConfirmation() {
 
         <main className="no-scrollbar flex-1 overflow-y-auto px-5 pb-6">
 
-          {/* Bandeau confirmation — sobre */}
+          {/* Bandeau confirmation */}
           <div className="mb-6 flex items-center gap-3 rounded-2xl bg-stone-100 px-4 py-3">
             <Check size={18} className="shrink-0 text-stone-700" strokeWidth={2.5} />
             <p className="text-xs font-medium leading-snug text-stone-700">
@@ -202,7 +202,7 @@ export default function AttenteConfirmation() {
             </p>
           </div>
 
-          {/* Détail commande — une seule carte unifiée */}
+          {/* Détail commande */}
           <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
             <h2 className="mb-4 text-[10px] font-bold uppercase tracking-wider text-stone-400">
               Commande
@@ -223,21 +223,18 @@ export default function AttenteConfirmation() {
                     </span>
                   </div>
                 ))}
-
-                {Number(commande.frais_livraison) > 0 && (
-                  <div className="flex items-center justify-between gap-3 border-t border-stone-100 pt-3 text-xs">
-                    <span className="text-stone-500">Livraison</span>
-                    <span className="font-semibold text-stone-800">
-                      {formatPrice(commande.frais_livraison)}
-                    </span>
-                  </div>
-                )}
               </div>
             ) : (
               <p className="text-xs italic text-stone-400">Chargement...</p>
             )}
 
-            <div className="mt-5 flex items-baseline justify-between border-t border-stone-100 pt-4">
+            {/* Note : frais de livraison payés au livreur */}
+            <p className="mt-4 border-t border-stone-100 pt-3 text-[10px] leading-relaxed text-stone-400">
+              Les frais de livraison seront calculés et réglés{' '}
+              <strong className="text-stone-600">directement auprès du livreur</strong>.
+            </p>
+
+            <div className="mt-4 flex items-baseline justify-between border-t border-stone-100 pt-4">
               <span className="text-xs font-bold uppercase tracking-wider text-stone-500">
                 Total
               </span>
@@ -247,7 +244,7 @@ export default function AttenteConfirmation() {
             </div>
           </section>
 
-          {/* Moyens de paiement — épuré */}
+          {/* Moyens de paiement */}
           <section className="mb-6">
             <h2 className="mb-3 px-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
               Paiement
@@ -267,7 +264,6 @@ export default function AttenteConfirmation() {
                         : 'border-stone-200 hover:border-stone-300'
                     }`}
                   >
-                    {/* Logo */}
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-stone-50">
                       <img
                         src={m.logo}
@@ -281,12 +277,10 @@ export default function AttenteConfirmation() {
                       />
                     </div>
 
-                    {/* Label */}
                     <span className="flex-1 text-sm font-bold text-stone-900">
                       {m.label}
                     </span>
 
-                    {/* Radio épuré */}
                     <span
                       className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition ${
                         actif
@@ -304,7 +298,7 @@ export default function AttenteConfirmation() {
             </div>
           </section>
 
-          {/* Numéro de téléphone — épuré */}
+          {/* Numéro de téléphone */}
           <section className="mb-6">
             <h2 className="mb-3 px-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
               Numéro
@@ -370,7 +364,6 @@ export default function AttenteConfirmation() {
 
       <main className="flex flex-1 flex-col items-center justify-center px-8 pb-6 text-center">
 
-        {/* Icône horloge — simple, sans animation criarde */}
         <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-stone-100">
           <Clock size={28} className="text-stone-500" strokeWidth={1.5} />
         </div>
@@ -383,7 +376,6 @@ export default function AttenteConfirmation() {
           Il vérifie ses stocks. Vous pourrez payer dès qu'il aura validé.
         </p>
 
-        {/* Numéro de commande — discret */}
         <div className="mb-8 flex items-center gap-2 rounded-full bg-stone-100 px-4 py-2">
           <Loader2 size={12} className="animate-spin text-stone-500" />
           <span className="text-[11px] font-medium text-stone-600">

@@ -8,7 +8,6 @@ import { usePublications } from '../../context/PublicationContext';
 import { CommandeService } from '../../services/commandeService';
 import { validators } from '../../utils/validators';
 
-
 const fallbackImage = '/images/fallback.png';
 
 const formatPrice = (p) =>
@@ -110,6 +109,26 @@ export default function Panier() {
     sauvegarderEtMettreAJour(maj);
   };
 
+  // ═══ MODIFIER QUANTITÉ (saisie manuelle) ═══
+  const modifierQuantite = (id, nouvelleValeur) => {
+    const maj = panier.map((i) => {
+      if (String(i.id) !== String(id)) return i;
+
+      let nouvelle = Number(nouvelleValeur);
+      if (isNaN(nouvelle) || nouvelle < 1) nouvelle = 1;
+
+      const stockMax = Number(i.stock) || Infinity;
+      if (nouvelle > stockMax) {
+        setFeedback(`Stock maximum atteint : ${stockMax} kg disponibles.`);
+        setTimeout(() => setFeedback(''), 3000);
+        return i;
+      }
+
+      return { ...i, quantite: nouvelle };
+    });
+    sauvegarderEtMettreAJour(maj);
+  };
+
   const retirer = (id) => {
     const maj = panier.filter((i) => String(i.id) !== String(id));
     sauvegarderEtMettreAJour(maj);
@@ -156,7 +175,6 @@ export default function Panier() {
     setAdresseError(null);
 
     try {
-      // ═══ Adresse : celle saisie, sinon celle du profil ═══
       const adresseFinale = (adresse || '').trim() || utilisateur?.adresse || '';
 
       const payload = {
@@ -266,12 +284,23 @@ export default function Panier() {
                         className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center disabled:opacity-40">
                         <Minus size={12} />
                       </button>
-                      <span className="text-xs font-bold min-w-[20px] text-center">{item.quantite}</span>
+
+                      <input
+                        type="number"
+                        min="1"
+                        max={stockMax}
+                        value={item.quantite}
+                        onChange={(e) => modifierQuantite(item.id, e.target.value)}
+                        disabled={indispo}
+                        className="w-12 rounded bg-slate-50 border border-slate-200 text-center text-xs font-bold text-slate-900 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#FF6B4A]/40 disabled:opacity-40"
+                      />
+
                       <button onClick={() => augmenter(item.id)}
                         disabled={indispo || stockAtteint}
                         className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed">
                         <Plus size={12} />
                       </button>
+
                       <span className={`ml-auto text-sm font-black ${indispo ? 'line-through' : ''}`}>
                         {formatPrice(Number(item.prix) * Number(item.quantite))}
                       </span>

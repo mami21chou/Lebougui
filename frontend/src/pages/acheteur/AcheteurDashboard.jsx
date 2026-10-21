@@ -469,7 +469,7 @@ export default function AcheteurDashboard() {
                             )}
                           </div>
                           <span className="truncate text-[10px] font-semibold text-white/90">{sellerName}</span>
-                          {product.pecheur?.est_premium && (
+                          {product.pecheur_est_premium && (
                             <BadgeCheck size={11} className="shrink-0 text-[#5FD9C4]" />
                           )}
                         </div>

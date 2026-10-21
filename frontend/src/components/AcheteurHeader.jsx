@@ -63,7 +63,7 @@ export default function AcheteurHeader({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {/* 🔔 Cloche avec badge de notifications */}
+            {/*  Cloche avec badge de notifications */}
             <button
               type="button"
               onClick={() => navigate('/acheteur/alertes')}
