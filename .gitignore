@@ -58,3 +58,5 @@ maquette/
 *.json
 media/
 firebase_key.json
+secrets/
+backend/staticfiles/

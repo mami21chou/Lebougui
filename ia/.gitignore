@@ -1,2 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.git/
 .env
-.venv
+.env.*
+*.log
+hf_cache/
+requirements.txt.bak
