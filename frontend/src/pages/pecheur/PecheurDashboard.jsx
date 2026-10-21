@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Camera, Mic, Video, Play, Pause,
   Clock, ChevronLeft, ChevronRight,
+  BadgeCheck, MapPin, Volume2,
+  ChevronRight as ArrowRight, ChevronDown,
 } from 'lucide-react';
 import AudioRecorderModal from '../../components/AudioRecorderModal';
 import PecheurHeader from '../../components/PecheurHeader';
@@ -22,6 +25,9 @@ const IMAGES_SENEGAL = [
 
 const FALLBACK_IMAGE = '/images/fallback.png';
 
+const INFOS_LIMIT = 3;
+const PRODUITS_PREVIEW = 6;
+
 const estAujourdhui = (dateStr) => {
   if (!dateStr) return false;
   const d = new Date(dateStr);
@@ -33,6 +39,24 @@ const estAujourdhui = (dateStr) => {
   );
 };
 
+const formatRelative = (dateStr) => {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "à l'instant";
+  if (min < 60) return `il y a ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `il y a ${h}h`;
+  const j = Math.floor(h / 24);
+  return `il y a ${j}j`;
+};
+
+const formatPrice = (p) =>
+  `${new Intl.NumberFormat('fr-FR').format(Number(p) || 0)} F`;
+
+const initiales = (prenom = '', nom = '') =>
+  `${prenom[0] || ''}${nom[0] || ''}`.toUpperCase() || 'P';
+
 export default function PecheurDashboard() {
   const navigate = useNavigate();
   const { utilisateur } = useAuth();
@@ -43,8 +67,10 @@ export default function PecheurDashboard() {
   const [informations, setInformations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pendingAudio, setPendingAudio] = useState(null);
-
   const [currentImageIdx, setCurrentImageIdx] = useState(0);
+  const [voirTousProduits, setVoirTousProduits] = useState(false);
+
+  const produitsRef = useRef(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -54,15 +80,13 @@ export default function PecheurDashboard() {
   }, []);
 
   useEffect(() => {
-    const loadDashboardData = async () => {
+    const load = async () => {
       try {
         const [produitsRes, infosRes] = await Promise.all([
           PublicationService.getMarche(),
           PublicationService.getInformationsPeche(),
         ]);
-
         setProduits(produitsRes || []);
-
         const infosDuJour = (infosRes || [])
           .filter((info) => estAujourdhui(info.date_publication))
           .sort(
@@ -70,18 +94,17 @@ export default function PecheurDashboard() {
               new Date(b.date_publication).getTime() -
               new Date(a.date_publication).getTime()
           );
-
         setInformations(infosDuJour);
       } catch (err) {
-        console.error('Erreur de chargement des données du marché:', err);
+        console.error('Erreur chargement:', err);
       } finally {
         setLoading(false);
       }
     };
-    loadDashboardData();
+    load();
   }, []);
 
-  const requireAuthAction = (actionCallback) => {
+  const requireAuthAction = (cb) => {
     const token = localStorage.getItem('access_token');
     if (!token) {
       window.location.href = `/connexion?redirect=${encodeURIComponent(
@@ -89,11 +112,8 @@ export default function PecheurDashboard() {
       )}`;
       return;
     }
-    actionCallback();
+    cb();
   };
-
-  const handleOpenRecorder = () =>
-    requireAuthAction(() => setShowRecorder(true));
 
   const handleAudioCaptured = (blob) => {
     setShowRecorder(false);
@@ -117,20 +137,38 @@ export default function PecheurDashboard() {
     e.target.value = '';
   };
 
-  const toggleProduitAudio = (e, produit) => {
+  const toggleAudio = (e, id, url) => {
     e.stopPropagation();
-    if (!produit.audio) return;
-    const id = `pecheur-market-${produit.id}`;
-    if (audioEnCours === id) {
-      pauseAudio();
-    } else {
-      playAudio(id, produit.audio);
-    }
+    if (!url) return;
+    const key = `audio-${id}`;
+    if (audioEnCours === key) pauseAudio();
+    else playAudio(key, url);
   };
 
+  const isPlaying = (id) => audioEnCours === `audio-${id}`;
+
+  const handleVoirPlusProduits = () => {
+    setVoirTousProduits((prev) => {
+      const nouveau = !prev;
+      if (!nouveau) {
+        setTimeout(() => {
+          produitsRef.current?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          });
+        }, 100);
+      }
+      return nouveau;
+    });
+  };
+
+  const infosAffichees = informations.slice(0, INFOS_LIMIT);
+  const produitsAffiches = voirTousProduits
+    ? produits
+    : produits.slice(0, PRODUITS_PREVIEW);
+
   return (
-    <div className="relative mx-auto min-h-screen max-w-md bg-[#F7F4EF] pb-24 font-sans text-slate-800 shadow-2xl">
-      {/* HEADER — sans vague, pour coller au carrousel */}
+    <div className="relative mx-auto min-h-screen max-w-md bg-[#F7F4EF] pb-28 font-sans text-slate-800 shadow-2xl">
       <PecheurHeader
         title={`Bonjour, ${utilisateur?.prenom || 'Pêcheur'}`}
         subtitle="Soumbédioune · Dakar"
@@ -144,8 +182,7 @@ export default function PecheurDashboard() {
       <main className="space-y-6 px-5 pt-2">
 
         {/* ==================== HERO IMMERSIF ==================== */}
-        {/* -mt-9 compense le padding bas (pb-9) du header bleu pour coller le carrousel */}
-        <section className="relative -mx-5 -mt-9 h-[calc(70vh-80px)] min-h-[620px] overflow-hidden">
+        <section className="relative -mx-5 -mt-9 h-[calc(50vh-80px)] min-h-[420px] overflow-hidden">
           {IMAGES_SENEGAL.map((img, idx) => (
             <img
               key={img}
@@ -214,7 +251,7 @@ export default function PecheurDashboard() {
           </div>
         </section>
 
-        {/* ==================== BLOC PUBLICATION VOCALE ==================== */}
+        {/* ==================== BLOC VOCAL ==================== */}
         <div className="space-y-4 rounded-3xl border border-slate-200/60 bg-white p-6 text-center shadow-sm">
           <h3 className="text-base font-bold text-slate-900">Publier</h3>
 
@@ -234,7 +271,10 @@ export default function PecheurDashboard() {
               <Camera size={20} />
             </button>
 
-            <button onClick={handleOpenRecorder} className="group relative">
+            <button
+              onClick={() => requireAuthAction(() => setShowRecorder(true))}
+              className="group relative"
+            >
               <div className="absolute -inset-2 rounded-full bg-orange-500/20 blur-sm transition-all group-hover:bg-orange-500/30" />
               <div className="relative flex h-20 w-20 flex-col items-center justify-center rounded-full bg-gradient-to-tr from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/30 transition-transform active:scale-95">
                 <Mic size={28} />
@@ -257,158 +297,238 @@ export default function PecheurDashboard() {
           </p>
         </div>
 
-        {/* ==================== INFORMATIONS DE PÊCHE — AUJOURD'HUI ==================== */}
+
+
+               {/* ==================== INFORMATIONS ==================== */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              INFORMATIONS DE PÊCHE
-            </h3>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-teal-600">
-              Aujourd'hui
-            </span>
-          </div>
-
-          {loading ? (
-            <p className="text-xs italic text-slate-400">
-              Chargement des alertes...
-            </p>
-          ) : informations.length === 0 ? (
-            <div className="rounded-2xl border border-slate-200/60 bg-white p-4 text-center shadow-sm">
-              <p className="text-xs text-slate-400">
-                Aucune information publiée aujourd'hui.
-              </p>
-            </div>
-          ) : (
-            informations.map((info) => (
-              <div
-                key={info.id}
-                className="space-y-2 rounded-2xl border-y border-r border-l-4 border-slate-200/60 border-l-teal-500 bg-white p-4 shadow-sm"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-600 text-[10px] font-bold text-white">
-                      {(info.pecheur_prenom?.[0] || 'P').toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="truncate text-sm font-bold text-slate-900">
-                        {info.adresse || 'Zone de Pêche'}
-                      </h4>
-                      <p className="truncate text-[10px] text-slate-400">
-                        {info.pecheur_prenom} {info.pecheur_nom}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="flex shrink-0 items-center gap-1 text-[10px] text-slate-400">
-                    <Clock size={10} />
-                    {new Date(info.date_publication).toLocaleTimeString('fr-FR', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                </div>
-
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs italic text-slate-700">
-                  « {info.texte_transcrit || 'Aucune transcription'} »
-                </div>
-
-                {info.audio && (
-                  <audio
-                    controls
-                    src={info.audio}
-                    className="h-9 w-full rounded-lg"
-                    preload="none"
-                  />
-                )}
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* ==================== LE MARCHÉ DU JOUR ==================== */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              LE MARCHÉ DU JOUR
+              Informations du jour
             </h3>
             <button
-              onClick={() => navigate('/pecheur/marche')}
-              className="text-xs font-bold text-orange-500"
+              onClick={() => navigate('/pecheur/informations')}
+              className="flex items-center gap-0.5 text-[11px] font-bold text-orange-500 transition hover:text-orange-600"
             >
               Voir tout
+              <ArrowRight size={12} />
             </button>
           </div>
 
           {loading ? (
-            <p className="text-xs italic text-slate-400">
-              Chargement des produits...
-            </p>
-          ) : produits.length === 0 ? (
-            <div className="rounded-2xl border border-slate-200/60 bg-white p-4 text-center shadow-sm">
+            <p className="text-xs italic text-slate-400">Chargement…</p>
+          ) : infosAffichees.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200/60 bg-white p-5 text-center shadow-sm">
+              <Volume2 size={24} className="mx-auto mb-2 text-slate-300" />
+              <p className="text-xs text-slate-400">Aucune information aujourd'hui.</p>
+            </div>
+          ) : (
+            infosAffichees.map((info) => {
+              const playing = isPlaying(`info-${info.id}`);
+              return (
+                <div
+                  key={info.id}
+                  className="overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm transition hover:shadow-md"
+                >
+                  <div className="flex items-center gap-3 p-3.5">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#0C3B4A] to-teal-600 text-sm font-black text-white shadow-sm">
+                      {initiales(info.pecheur_prenom, info.pecheur_nom)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="truncate text-sm font-bold text-slate-900">
+                          {info.pecheur_prenom} {info.pecheur_nom}
+                        </p>
+                        {info.pecheur_est_premium && (
+                          <BadgeCheck size={14} className="shrink-0 text-teal-500" />
+                        )}
+                      </div>
+                      <p className="flex items-center gap-1 truncate text-[11px] text-slate-400">
+                        <MapPin size={10} />
+                        {info.adresse || 'Zone non précisée'}
+                        <span>·</span>
+                        <Clock size={10} />
+                        {formatRelative(info.date_publication)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {info.audio && (
+                    <button
+                      type="button"
+                      onClick={(e) => toggleAudio(e, `info-${info.id}`, info.audio)}
+                      className="flex w-full items-center gap-3 border-t border-slate-100 bg-slate-50/50 px-3.5 py-3 transition hover:bg-slate-100"
+                    >
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition ${
+                          playing
+                            ? 'bg-[#FF6B4A] text-white'
+                            : 'bg-white text-[#0C3B4A] shadow-sm ring-1 ring-slate-200'
+                        }`}
+                      >
+                        {playing ? (
+                          <Pause size={14} fill="currentColor" />
+                        ) : (
+                          <Play size={14} fill="currentColor" className="ml-0.5" />
+                        )}
+                      </span>
+                      <span className="flex-1 text-left">
+                        <span className="block text-xs font-bold text-slate-700">
+                          {playing ? 'En lecture…' : 'Écouter la note vocale'}
+                        </span>
+                        <span className="block text-[10px] text-slate-400">
+                          Vocal wolof
+                        </span>
+                      </span>
+                      <Volume2 size={16} className="text-slate-400" />
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>     
+
+
+        {/* ==================== LE MARCHÉ DU JOUR ==================== */}
+        <div ref={produitsRef} className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Le marché du jour
+            </h3>
+            <span className="text-[10px] font-medium text-slate-400">
+              {produitsAffiches.length} / {produits.length}
+            </span>
+          </div>
+
+          {loading ? (
+            <p className="text-xs italic text-slate-400">Chargement…</p>
+          ) : produitsAffiches.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200/60 bg-white p-5 text-center shadow-sm">
               <p className="text-xs text-slate-400">Aucun produit disponible.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {produits.slice(0, 4).map((item) => {
-                const audioId = `pecheur-market-${item.id}`;
-                const isPlaying = audioEnCours === audioId;
-                const hasAudio = Boolean(item.audio);
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                {produitsAffiches.map((item) => {
+                  const playing = isPlaying(`prod-${item.id}`);
+                  const hasAudio = Boolean(item.audio);
+                  const sellerName =
+                    `${item.pecheur_prenom || ''} ${
+                      item.pecheur_nom || ''
+                    }`.trim() || 'Pêcheur';
 
-                return (
-                  <div
-                    key={item.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => navigate(`/acheteur/produit/${item.id}`)}
-                    onKeyDown={(e) =>
-                      e.key === 'Enter' &&
-                      navigate(`/acheteur/produit/${item.id}`)
-                    }
-                    className="group cursor-pointer overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm transition active:scale-[0.98]"
-                  >
-                    <div className="relative aspect-[4/5] w-full overflow-hidden bg-slate-100">
-                      <img
-                        src={item.media || item.image || FALLBACK_IMAGE}
-                        alt=""
-                        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src = FALLBACK_IMAGE;
-                        }}
-                      />
+                  return (
+                    <div
+                      key={item.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/acheteur/produit/${item.id}`)}
+                      onKeyDown={(e) =>
+                        e.key === 'Enter' &&
+                        navigate(`/acheteur/produit/${item.id}`)
+                      }
+                      className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md active:scale-[0.98]"
+                    >
+                      {/* Image + bouton audio */}
+                      <div className="relative aspect-square w-full overflow-hidden bg-slate-100">
+                        <img
+                          src={item.media || item.image || FALLBACK_IMAGE}
+                          alt={item.nom}
+                          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = FALLBACK_IMAGE;
+                          }}
+                        />
 
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-black/40 to-transparent" />
+                        {hasAudio && (
+                          <button
+                            type="button"
+                            onClick={(e) =>
+                              toggleAudio(e, `prod-${item.id}`, item.audio)
+                            }
+                            className={`absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full transition ${
+                              playing
+                                ? 'bg-[#FF6B4A] text-white'
+                                : 'bg-white/90 text-[#0C3B4A] backdrop-blur-sm hover:bg-white'
+                            }`}
+                            aria-label="Écouter"
+                          >
+                            {playing ? (
+                              <Pause size={12} fill="currentColor" />
+                            ) : (
+                              <Play
+                                size={12}
+                                fill="currentColor"
+                                className="ml-0.5"
+                              />
+                            )}
+                          </button>
+                        )}
+                      </div>
 
-                      {hasAudio && (
-                        <button
-                          type="button"
-                          onClick={(e) => toggleProduitAudio(e, item)}
-                          aria-label={
-                            isPlaying ? 'Pause' : 'Lecture de la note vocale'
-                          }
-                          className={`absolute left-2 top-2 flex h-8 w-8 items-center justify-center rounded-full backdrop-blur-sm transition ${
-                            isPlaying
-                              ? 'bg-[#FF6B4A] text-white'
-                              : 'bg-black/50 text-white hover:bg-black/65'
-                          }`}
-                        >
-                          {isPlaying ? (
-                            <Pause size={13} fill="currentColor" />
-                          ) : (
-                            <Play size={13} fill="currentColor" />
+                      {/* Contenu sous l'image */}
+                      <div className="flex flex-1 flex-col gap-2 p-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0C3B4A] text-[8px] font-bold text-white">
+                            {initiales(item.pecheur_prenom, item.pecheur_nom)}
+                          </div>
+                          <span className="min-w-0 flex-1 truncate text-[10px] font-semibold text-slate-600">
+                            {sellerName}
+                          </span>
+                          {item.pecheur_est_premium && (
+                            <BadgeCheck
+                              size={12}
+                              className="shrink-0 text-sky-500"
+                              aria-label="Pêcheur vérifié"
+                            />
                           )}
-                        </button>
-                      )}
+                        </div>
+
+                        <h4 className="truncate text-xs font-bold text-slate-900">
+                          {item.nom}
+                        </h4>
+
+                        <div className="mt-auto flex items-baseline gap-1">
+                          <span className="text-sm font-black text-[#0C3B4A]">
+                            {formatPrice(item.prix)}
+                          </span>
+                          <span className="text-[9px] font-medium text-slate-400">
+                            / {item.unite || 'kg'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+
+              {/* Bouton Voir plus / Voir moins */}
+              {produits.length > PRODUITS_PREVIEW && (
+                <button
+                  onClick={handleVoirPlusProduits}
+                  className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white py-3 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.98]"
+                >
+                  <span>
+                    {voirTousProduits
+                      ? 'Voir moins'
+                      : `Voir plus (${produits.length - PRODUITS_PREVIEW} de plus)`}
+                  </span>
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform ${
+                      voirTousProduits ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+              )}
+            </>
           )}
-          <PecheurBottomNav />
         </div>
-        
+
       </main>
-      
+
+      <PecheurBottomNav />
 
       {showRecorder && (
         <AudioRecorderModal

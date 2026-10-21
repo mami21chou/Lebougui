@@ -16,7 +16,7 @@ import ValidationPublication from './pages/pecheur/ValidationPublication';
 import MesPublications from './pages/pecheur/MesPublications';
 import CommandesRecues from './pages/pecheur/CommandesRecues';
 import Ventes from './pages/pecheur/Ventes';
-
+import MesInformations from './pages/pecheur/MesInformations';
 // Pages acheteur
 import AcheteurDashboard from './pages/acheteur/AcheteurDashboard';
 import ProduitDetails from './pages/acheteur/ProduitDetails';
@@ -87,6 +87,11 @@ export default function App() {
         <Route
           path="/pecheur/ventes"
           element={<ProtectedRoute roles={['pecheur']}><Ventes /></ProtectedRoute>}
+        />
+
+        <Route
+          path="/pecheur/informations"
+          element={<ProtectedRoute roles={['pecheur']}><MesInformations /></ProtectedRoute>}
         />
 
         {/* ---------------- Routes ACHETEUR ---------------- */}

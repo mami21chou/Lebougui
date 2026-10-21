@@ -9,33 +9,42 @@ export default function PecheurBottomNav({ className = '' }) {
 
   const isActive = (paths) => paths.some((p) => path.includes(p));
 
+  const handleClick = (targetPath, isCurrent) => {
+    if (isCurrent) {
+      // Déjà sur la page → scroll top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      navigate(targetPath);
+    }
+  };
+
   const items = [
     {
       key: 'marche',
       label: 'Marché',
       Icon: Store,
-      onClick: () => navigate('/pecheur/accueil'),
+      target: '/pecheur/accueil',
       active: isActive(['/accueil', '/marche']),
     },
     {
       key: 'publications',
       label: 'Publications',
       Icon: Package,
-      onClick: () => navigate('/pecheur/publications'),
+      target: '/pecheur/publications',
       active: isActive(['/publications']),
     },
     {
       key: 'commandes',
       label: 'Commandes',
       Icon: ClipboardList,
-      onClick: () => navigate('/pecheur/commandes'),
+      target: '/pecheur/commandes',
       active: isActive(['/commandes']),
     },
     {
       key: 'ventes',
       label: 'Ventes',
       Icon: TrendingUp,
-      onClick: () => navigate('/pecheur/ventes'),
+      target: '/pecheur/ventes',
       active: isActive(['/ventes']),
     },
   ];
@@ -44,11 +53,11 @@ export default function PecheurBottomNav({ className = '' }) {
     <nav
       className={`fixed bottom-3 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center justify-between rounded-full border border-stone-200/60 bg-white/95 px-5 py-2.5 shadow-xl backdrop-blur-md lg:hidden ${className}`}
     >
-      {items.map(({ key, label, Icon, onClick, active }) => (
+      {items.map(({ key, label, Icon, target, active }) => (
         <button
           key={key}
           type="button"
-          onClick={onClick}
+          onClick={() => handleClick(target, active)}
           className={`flex flex-col items-center gap-0.5 transition ${
             active
               ? 'font-extrabold text-[#0C3B4A]'

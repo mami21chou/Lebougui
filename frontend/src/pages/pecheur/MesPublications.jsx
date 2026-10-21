@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Mic, Play, Pause, MapPin,
-  Edit3, Trash2, Clock,
+  Edit3, Trash2, Clock, BadgeCheck,
 } from 'lucide-react';
 import PecheurHeader from '../../components/PecheurHeader';
 import PecheurBottomNav from '../../components/PecheurBottomNav';
@@ -33,7 +33,7 @@ const AudioButtonCompact = ({ id, audioUrl }) => {
       aria-label={isPlaying ? 'Pause' : 'Lecture'}
       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition ${
         isPlaying
-          ? 'bg-[#FF6B4A] text-white shadow-md shadow-orange-500/30'
+          ? 'bg-[#FF6B4A] text-white'
           : 'bg-slate-100 text-[#0C3B4A] hover:bg-slate-200'
       }`}
     >
@@ -49,7 +49,7 @@ const AudioButtonCompact = ({ id, audioUrl }) => {
 // ============================================================
 // Lecteur audio — large (utilisé dans les cartes infos)
 // ============================================================
-const AudioPlayerRow = ({ id, audioUrl, duration = '0:28' }) => {
+const AudioPlayerRow = ({ id, audioUrl, duration = '' }) => {
   const { currentId, play, pause } = useAudio();
   const isPlaying = currentId === id;
 
@@ -60,15 +60,17 @@ const AudioPlayerRow = ({ id, audioUrl, duration = '0:28' }) => {
   };
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2.5">
-      <button
-        type="button"
-        onClick={togglePlay}
-        aria-label={isPlaying ? 'Pause' : 'Lecture'}
+    <button
+      type="button"
+      onClick={togglePlay}
+      aria-label={isPlaying ? 'Pause' : 'Lecture'}
+      className="flex w-full items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5 transition hover:bg-slate-100"
+    >
+      <span
         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition ${
           isPlaying
-            ? 'bg-[#FF6B4A] text-white shadow-md shadow-orange-500/30'
-            : 'bg-white text-[#0C3B4A] shadow-sm ring-1 ring-slate-200 hover:bg-slate-100'
+            ? 'bg-[#FF6B4A] text-white'
+            : 'bg-white text-[#0C3B4A] shadow-sm ring-1 ring-slate-200'
         }`}
       >
         {isPlaying ? (
@@ -76,16 +78,25 @@ const AudioPlayerRow = ({ id, audioUrl, duration = '0:28' }) => {
         ) : (
           <Play size={14} fill="currentColor" className="ml-0.5" />
         )}
-      </button>
-
-      <span className="flex-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-        Vocal wolof
       </span>
 
-      <span className="shrink-0 text-[10px] font-bold text-slate-400">
-        {duration}
+      <span className="flex-1 text-left">
+        <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+          Vocal wolof
+        </span>
+        {duration && (
+          <span className="block text-[10px] text-slate-400">{duration}</span>
+        )}
       </span>
-    </div>
+
+      {isPlaying && (
+        <span className="flex items-end gap-0.5">
+          <span className="h-2 w-0.5 animate-pulse rounded-full bg-[#FF6B4A]" />
+          <span className="h-3.5 w-0.5 animate-pulse rounded-full bg-[#FF6B4A] [animation-delay:100ms]" />
+          <span className="h-2.5 w-0.5 animate-pulse rounded-full bg-[#FF6B4A] [animation-delay:200ms]" />
+        </span>
+      )}
+    </button>
   );
 };
 
@@ -125,66 +136,64 @@ const InfoCard = ({ info, isMine, showActions, onEdit, onDelete }) => {
   const init = initiales(info.pecheur_prenom, info.pecheur_nom);
 
   return (
-    <article className="overflow-hidden rounded-3xl bg-white shadow-sm">
-      <div className="flex">
-        <div className="" />
-
-        <div className="flex-1 space-y-3 p-4">
-          <header className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#0C3B4A] to-teal-600 text-xs font-black text-white">
-              {init}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h4 className="truncate text-sm font-bold text-slate-900">
-                {auteurNom}
-                {isMine && (
-                  <span className="ml-1.5 rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-bold text-teal-700">
-                    Moi
-                  </span>
-                )}
-              </h4>
-              <p className="flex items-center gap-1 text-[10px] text-slate-400">
-                <Clock size={10} />
-                {formatRelative(info.date_publication)}
-              </p>
-            </div>
-          </header>
-
-          <p className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-semibold text-orange-600">
-            <MapPin size={11} />
-            {info.adresse || 'Zone non précisée'}
-          </p>
-
-          <div className="rounded-2xl bg-amber-50/70 p-3.5 text-xs italic leading-relaxed text-slate-700">
-            « {info.texte_transcrit || 'Aucune transcription'} »
-          </div>
-
-          <AudioPlayerRow
-            id={`info-${info.id}`}
-            audioUrl={info.audio}
-            duration={info.duree_audio || '0:18'}
-          />
-
-          {showActions && isMine && (
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                onClick={onEdit}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-200"
-              >
-                <Edit3 size={13} />
-                Modifier
-              </button>
-              <button
-                onClick={onDelete}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-red-50 py-2 text-xs font-bold text-red-600 transition hover:bg-red-100"
-              >
-                <Trash2 size={13} />
-                Supprimer
-              </button>
-            </div>
-          )}
+    <article className="overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
+      {/* En-tête profil */}
+      <header className="flex items-center gap-3 px-4 py-3.5">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#0C3B4A] to-teal-600 text-xs font-black text-white">
+          {init}
         </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <h4 className="truncate text-sm font-bold text-slate-900">
+              {auteurNom}
+            </h4>
+            {info.pecheur_est_premium && (
+              <BadgeCheck size={14} className="shrink-0 text-sky-500" />
+            )}
+            {isMine && (
+              <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-bold text-teal-700">
+                Moi
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-slate-400">
+            <MapPin size={10} />
+            {info.adresse || 'Zone non précisée'}
+            <span>·</span>
+            <Clock size={10} />
+            {formatRelative(info.date_publication)}
+          </p>
+        </div>
+      </header>
+
+      {/* Bouton audio vocal */}
+      <div className="border-t border-slate-100 px-4 py-3">
+        <AudioPlayerRow
+          id={`info-${info.id}`}
+          audioUrl={info.audio}
+          duration={info.duree_audio || ''}
+        />
       </div>
+
+      {/* Actions (Modifier/Supprimer) */}
+      {showActions && isMine && (
+        <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-3">
+          <button
+            onClick={onEdit}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-200"
+          >
+            <Edit3 size={13} />
+            Modifier
+          </button>
+          <button
+            onClick={onDelete}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-red-50 py-2 text-xs font-bold text-red-600 transition hover:bg-red-100"
+          >
+            <Trash2 size={13} />
+            Supprimer
+          </button>
+        </div>
+      )}
     </article>
   );
 };
@@ -196,42 +205,27 @@ const ProduitCard = ({ prod, estDisponible, enCours, onToggle }) => (
   <article className="overflow-hidden rounded-2xl bg-white shadow-sm">
     {/* IMAGE */}
     <div className="relative aspect-square w-full overflow-hidden bg-slate-100">
-      {prod.media ? (
-        <img
-          src={prod.media}
-          alt={prod.nom}
-          className={`h-full w-full object-cover transition duration-500 ${
-            estDisponible ? '' : 'grayscale opacity-60'
-          }`}
-          onError={(e) => {
-            e.target.onerror = null;
-            e.target.src = fallbackImage;
-          }}
-        />
-      ) : (
-        <img
-          src={fallbackImage}
-          alt={prod.nom}
-          className={`h-full w-full object-cover transition duration-500 ${
-            estDisponible ? '' : 'grayscale opacity-60'
-          }`}
-        />
-      )}
+      <img
+        src={prod.media || fallbackImage}
+        alt={prod.nom}
+        className={`h-full w-full object-cover transition duration-500 ${
+          estDisponible ? '' : 'grayscale opacity-60'
+        }`}
+        onError={(e) => {
+          e.target.onerror = null;
+          e.target.src = fallbackImage;
+        }}
+      />
     </div>
 
     {/* CORPS */}
     <div className="space-y-2.5 p-2.5">
-      {/* Nom */}
       <h3 className="truncate text-xs font-bold leading-tight text-[#0F2A4A]">
         {prod.nom}
       </h3>
 
-      {/* Audio + Toggle sur la même ligne */}
       <div className="flex items-center justify-between gap-2">
-        <AudioButtonCompact
-          id={`prod-${prod.id}`}
-          audioUrl={prod.audio}
-        />
+        <AudioButtonCompact id={`prod-${prod.id}`} audioUrl={prod.audio} />
 
         <button
           type="button"
@@ -327,7 +321,6 @@ const MesPublications = () => {
   return (
     <div className="relative mx-auto min-h-screen max-w-md bg-[#F7F4EF] pb-24 font-sans text-slate-800 shadow-2xl">
 
-      {/* HEADER */}
       <PecheurHeader
         title="Publications"
         subtitle="Vos prises et informations"
@@ -408,7 +401,6 @@ const MesPublications = () => {
           </div>
         ) : (
           <>
-            {/* INFORMATIONS — liste pleine largeur */}
             {ongletActif === 'informations' && (
               <div className="space-y-3">
                 {toutesLesInformations.length === 0 ? (
@@ -426,7 +418,6 @@ const MesPublications = () => {
               </div>
             )}
 
-            {/* MES POSTS — liste pleine largeur */}
             {ongletActif === 'mes_posts' && (
               <div className="space-y-3">
                 {mesInformations.length === 0 ? (
@@ -446,7 +437,6 @@ const MesPublications = () => {
               </div>
             )}
 
-            {/* MES PRISES — grille 2×2 */}
             {ongletActif === 'mes_prises' && (
               <div className="grid grid-cols-2 gap-3">
                 {mesProduits.length === 0 ? (
