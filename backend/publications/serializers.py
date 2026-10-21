@@ -75,26 +75,40 @@ class ProduitSerializer(serializers.ModelSerializer):
     """Serializer de LECTURE, utilisé pour afficher un Produit (fil, détail)."""
     pecheur_nom = serializers.CharField(source="pecheur.nom", read_only=True)
     pecheur_prenom = serializers.CharField(source="pecheur.prenom", read_only=True)
-
+    pecheur_est_premium = serializers.SerializerMethodField()
     class Meta:
         model = Produit
         fields = [
-            "id", "pecheur", "pecheur_nom", "pecheur_prenom",
+            "id", "pecheur", "pecheur_nom", "pecheur_prenom","pecheur_est_premium",
             "date_publication", "media", "audio", "adresse",
             "latitude", "longitude", "nom", "categorie", "prix",
             "quantite", "statut", "statut_moderation",
         ]
 
 
+    def get_pecheur_est_premium(self, obj):
+        if not obj.pecheur:
+            return False
+        return obj.pecheur.status_premium.filter(
+            fonction="badge_pecheur", statut="actif"
+        ).exists()
+
 class InformationSerializer(serializers.ModelSerializer):
     """Serializer de LECTURE pour une Information. Pas de champ "media"."""
     pecheur_nom = serializers.CharField(source="pecheur.nom", read_only=True)
     pecheur_prenom = serializers.CharField(source="pecheur.prenom", read_only=True)
-
+    pecheur_est_premium = serializers.SerializerMethodField()
     class Meta:
         model = Information
         fields = [
-            "id", "pecheur", "pecheur_nom", "pecheur_prenom",
+            "id", "pecheur", "pecheur_nom", "pecheur_prenom","pecheur_est_premium",
             "date_publication", "audio", "adresse","texte_transcrit",
             "latitude", "longitude", "description", "statut_moderation",
         ]
+
+    def get_pecheur_est_premium(self, obj):
+        if not obj.pecheur:
+            return False
+        return obj.pecheur.status_premium.filter(
+            fonction="badge_pecheur", statut="actif"
+        ).exists()    
